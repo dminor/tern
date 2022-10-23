@@ -1,0 +1,261 @@
+use std::collections::HashMap;
+use std::fmt::Debug;
+
+#[derive(Clone, Debug)]
+pub enum Term<T> {
+    Atom(T),
+    Variable(String),
+    Tuple(Vec<Term<T>>),
+}
+
+impl<T: std::cmp::PartialEq> PartialEq for Term<T> {
+    fn eq(&self, other: &Term<T>) -> bool {
+        match self {
+            Term::Atom(u) => {
+                if let Term::Atom(v) = other {
+                    u == v
+                } else {
+                    false
+                }
+            }
+            Term::Variable(u) => {
+                if let Term::Variable(v) = other {
+                    u == v
+                } else {
+                    false
+                }
+            }
+            Term::Tuple(u) => {
+                if let Term::Tuple(v) = other {
+                    u == v
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+// Resolve the value of x in the bindings.
+//
+// `walk` is a utility function that walks the bindings, recursively resolving variables
+// until an unbound variable or an atom is encountered. E.g, given bindings that maps x -> y,
+// y -> z, and z -> "ceviche", calling `walk` with the variable `x` will result in the atom
+// "ceviche".
+fn walk<'a, T: Clone>(x: &'a Term<T>, bindings: &'a HashMap<String, Term<T>>) -> &'a Term<T> {
+    if let Term::Variable(var) = x {
+        if let Some(t) = bindings.get(var) {
+            walk(t, bindings)
+        } else {
+            x
+        }
+    } else {
+        x
+    }
+}
+
+// Attempt to unify the left and right hand terms using the given bindings, returning
+// true if the terms unify, false otherwise.
+//
+// If one of the terms is an unbound variable, it will be bound to the other term,
+// extending the bindings. If both terms are bound variables or atoms, the unification
+// will succeed if the value of the bound variable or the atom is equal to the other
+// term. An unbound variable can be bound to an atom, to a bound variable, or another
+// unbound variable. Once bound, a variable can not be bound to another term.
+pub fn unify<T: std::cmp::PartialEq + Clone>(
+    left: &Term<T>,
+    right: &Term<T>,
+    bindings: &mut HashMap<String, Term<T>>,
+) -> bool {
+    match left {
+        Term::Atom(u) => match right {
+            Term::Atom(v) => u == v,
+            Term::Variable(_) => {
+                let x = walk(right, bindings);
+                if let Term::Variable(var) = x {
+                    bindings.insert(var.to_string(), left.clone());
+                    true
+                } else {
+                    right == x
+                }
+            }
+            Term::Tuple(_) => false,
+        },
+        Term::Variable(_) => {
+            let x = walk(left, bindings);
+            // Check for equality early to avoid binding a variable to itself,
+            // which will lead to infinite recursion while unifying.
+            if right == x {
+                true
+            } else if let Term::Variable(var) = x {
+                let y = walk(right, bindings);
+                // Only introduce a binding if y resolves to something other
+                // than x, to avoid cycles that will lead to infinite recursion
+                // while unifying.
+                if x != y {
+                    bindings.insert(var.to_string(), right.clone());
+                }
+                true
+            } else {
+                false
+            }
+        }
+        Term::Tuple(u) => match right {
+            Term::Atom(_) => false,
+            Term::Variable(var) => {
+                let x = walk(right, bindings);
+                if let Term::Variable(var) = x {
+                    bindings.insert(var.to_string(), left.clone());
+                    true
+                } else {
+                    right == x
+                }
+            }
+            Term::Tuple(v) => {
+                if u.len() != v.len() {
+                    return false;
+                }
+                for (u0, v0) in u.iter().zip(v.iter()) {
+                    if !unify(u0, v0, bindings) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::unification::*;
+
+    #[test]
+    fn test_walk() {
+        let bindings = HashMap::<String, Term<i32>>::new();
+        assert_eq!(
+            walk(&Term::Variable("x".to_string()), &bindings),
+            &Term::Variable("x".to_string())
+        );
+        assert_eq!(walk(&Term::Atom(42), &bindings), &Term::Atom(42));
+
+        let mut bindings = HashMap::new();
+        bindings.insert("x".to_string(), Term::Variable("y".to_string()));
+        bindings.insert("z".to_string(), Term::Atom("a".to_string()));
+        bindings.insert("y".to_string(), Term::Variable("z".to_string()));
+        assert_eq!(
+            walk(&Term::Variable("x".to_string()), &bindings),
+            &Term::Atom("a".to_string())
+        );
+    }
+
+    #[test]
+    fn test_unify() {
+        let mut bindings = HashMap::new();
+        assert!(unify(
+            &Term::Atom("a".to_string()),
+            &Term::Atom("a".to_string()),
+            &mut bindings
+        ));
+        assert!(!unify(
+            &Term::Atom("a".to_string()),
+            &Term::Atom("ab".to_string()),
+            &mut bindings
+        ));
+        assert_eq!(bindings.len(), 0);
+
+        let mut bindings = HashMap::new();
+        assert!(unify(&Term::Atom(1), &Term::Atom(1), &mut bindings));
+        assert_eq!(bindings.len(), 0);
+
+        let mut bindings = HashMap::new();
+        assert!(unify(
+            &Term::Variable("x".to_string()),
+            &Term::Atom(1),
+            &mut bindings
+        ));
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(*bindings.get("x").unwrap(), Term::Atom(1));
+        assert!(unify(
+            &Term::Variable("x".to_string()),
+            &Term::Atom(1),
+            &mut bindings
+        ));
+        assert!(!unify(
+            &Term::Variable("x".to_string()),
+            &Term::Atom(2),
+            &mut bindings
+        ));
+
+        let mut bindings = HashMap::new();
+        assert!(unify(
+            &Term::Tuple(vec!(Term::Variable("x".to_string()), Term::Atom(1))),
+            &Term::Tuple(vec!(Term::Atom(2), Term::Variable("y".to_string()))),
+            &mut bindings
+        ));
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(*bindings.get("x").unwrap(), Term::Atom(2));
+        assert_eq!(*bindings.get("y").unwrap(), Term::Atom(1));
+
+        let mut bindings = HashMap::<String, Term<i32>>::new();
+        assert!(unify(
+            &Term::Variable("x".to_string()),
+            &Term::Variable("y".to_string()),
+            &mut bindings
+        ));
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(*bindings.get("x").unwrap(), Term::Variable("y".to_string()));
+
+        let mut bindings = HashMap::<String, Term<i32>>::new();
+        assert!(unify(
+            &Term::Tuple(vec!(
+                Term::Variable("x".to_string()),
+                Term::Variable("x".to_string())
+            )),
+            &Term::Tuple(vec!(
+                Term::Variable("y".to_string()),
+                Term::Variable("y".to_string())
+            )),
+            &mut bindings
+        ));
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(*bindings.get("x").unwrap(), Term::Variable("y".to_string()));
+
+        let mut bindings = HashMap::<String, Term<i32>>::new();
+        assert!(unify(
+            &Term::Tuple(vec!(
+                Term::Variable("x".to_string()),
+                Term::Variable("x".to_string()),
+                Term::Variable("x".to_string())
+            )),
+            &Term::Tuple(vec!(
+                Term::Variable("y".to_string()),
+                Term::Variable("y".to_string()),
+                Term::Variable("y".to_string())
+            )),
+            &mut bindings
+        ));
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(*bindings.get("x").unwrap(), Term::Variable("y".to_string()));
+
+        let mut bindings = HashMap::<String, Term<i32>>::new();
+        assert!(unify(
+            &Term::Tuple(vec!(
+                Term::Variable("x".to_string()),
+                Term::Variable("y".to_string()),
+                Term::Atom(42)
+            )),
+            &Term::Tuple(vec!(
+                Term::Variable("y".to_string()),
+                Term::Variable("x".to_string()),
+                Term::Variable("x".to_string())
+            )),
+            &mut bindings
+        ));
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(*bindings.get("x").unwrap(), Term::Variable("y".to_string()));
+        assert_eq!(*bindings.get("y").unwrap(), Term::Atom(42));
+    }
+}
