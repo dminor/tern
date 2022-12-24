@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-pub type Bindings<T> = HashMap<String, Term<T>>;
+pub type Bindings<T> = HashMap<i64, Term<T>>;
 
 #[derive(Debug)]
 pub enum Term<T> {
     Atom(T),
-    Variable(String),
+    Variable(i64),
     Tuple(Vec<Term<T>>),
 }
 
@@ -14,7 +14,7 @@ impl<T: Clone> Clone for Term<T> {
     fn clone(&self) -> Self {
         match self {
             Term::Atom(u) => Term::Atom(u.clone()),
-            Term::Variable(u) => Term::Variable(u.to_string()),
+            Term::Variable(u) => Term::Variable(*u),
             Term::Tuple(u) => Term::Tuple(u.to_vec()),
         }
     }
@@ -85,7 +85,7 @@ pub fn unify<T: std::cmp::PartialEq + Clone>(
             Term::Variable(_) => {
                 let x = walk(right, bindings);
                 if let Term::Variable(var) = x {
-                    bindings.insert(var.to_string(), left.clone());
+                    bindings.insert(*var, left.clone());
                     true
                 } else {
                     right == x
@@ -105,7 +105,7 @@ pub fn unify<T: std::cmp::PartialEq + Clone>(
                 // than x, to avoid cycles that will lead to infinite recursion
                 // while unifying.
                 if x != y {
-                    bindings.insert(var.to_string(), right.clone());
+                    bindings.insert(*var, right.clone());
                 }
                 true
             } else {
@@ -117,7 +117,7 @@ pub fn unify<T: std::cmp::PartialEq + Clone>(
             Term::Variable(var) => {
                 let x = walk(right, bindings);
                 if let Term::Variable(var) = x {
-                    bindings.insert(var.to_string(), left.clone());
+                    bindings.insert(*var, left.clone());
                     true
                 } else {
                     right == x
@@ -146,19 +146,16 @@ mod tests {
 
     #[test]
     fn test_walk() {
-        let bindings = HashMap::<String, Term<i32>>::new();
-        assert_eq!(
-            walk(&Term::Variable("x".to_string()), &bindings),
-            &Term::Variable("x".to_string())
-        );
+        let bindings = HashMap::<i64, Term<i32>>::new();
+        assert_eq!(walk(&Term::Variable(1), &bindings), &Term::Variable(1));
         assert_eq!(walk(&Term::Atom(42), &bindings), &Term::Atom(42));
 
         let mut bindings = HashMap::new();
-        bindings.insert("x".to_string(), Term::Variable("y".to_string()));
-        bindings.insert("z".to_string(), Term::Atom("a".to_string()));
-        bindings.insert("y".to_string(), Term::Variable("z".to_string()));
+        bindings.insert(1, Term::Variable(2));
+        bindings.insert(3, Term::Atom("a".to_string()));
+        bindings.insert(2, Term::Variable(3));
         assert_eq!(
-            walk(&Term::Variable("x".to_string()), &bindings),
+            walk(&Term::Variable(1), &bindings),
             &Term::Atom("a".to_string())
         );
     }
@@ -183,91 +180,65 @@ mod tests {
         assert_eq!(bindings.len(), 0);
 
         let mut bindings = HashMap::new();
-        assert!(unify(
-            &Term::Variable("x".to_string()),
-            &Term::Atom(1),
-            &mut bindings
-        ));
+        assert!(unify(&Term::Variable(1), &Term::Atom(1), &mut bindings));
         assert_eq!(bindings.len(), 1);
-        assert_eq!(*bindings.get("x").unwrap(), Term::Atom(1));
-        assert!(unify(
-            &Term::Variable("x".to_string()),
-            &Term::Atom(1),
-            &mut bindings
-        ));
-        assert!(!unify(
-            &Term::Variable("x".to_string()),
-            &Term::Atom(2),
-            &mut bindings
-        ));
+        assert_eq!(*bindings.get(&1).unwrap(), Term::Atom(1));
+        assert!(unify(&Term::Variable(1), &Term::Atom(1), &mut bindings));
+        assert!(!unify(&Term::Variable(1), &Term::Atom(2), &mut bindings));
 
         let mut bindings = HashMap::new();
         assert!(unify(
-            &Term::Tuple(vec!(Term::Variable("x".to_string()), Term::Atom(1))),
-            &Term::Tuple(vec!(Term::Atom(2), Term::Variable("y".to_string()))),
+            &Term::Tuple(vec!(Term::Variable(1), Term::Atom(1))),
+            &Term::Tuple(vec!(Term::Atom(2), Term::Variable(2))),
             &mut bindings
         ));
         assert_eq!(bindings.len(), 2);
-        assert_eq!(*bindings.get("x").unwrap(), Term::Atom(2));
-        assert_eq!(*bindings.get("y").unwrap(), Term::Atom(1));
+        assert_eq!(*bindings.get(&1).unwrap(), Term::Atom(2));
+        assert_eq!(*bindings.get(&2).unwrap(), Term::Atom(1));
 
-        let mut bindings = HashMap::<String, Term<i32>>::new();
+        let mut bindings = HashMap::<i64, Term<i32>>::new();
+        assert!(unify(&Term::Variable(1), &Term::Variable(2), &mut bindings));
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(*bindings.get(&1).unwrap(), Term::Variable(2));
+
+        let mut bindings = HashMap::<i64, Term<i32>>::new();
         assert!(unify(
-            &Term::Variable("x".to_string()),
-            &Term::Variable("y".to_string()),
+            &Term::Tuple(vec!(Term::Variable(1), Term::Variable(1))),
+            &Term::Tuple(vec!(Term::Variable(2), Term::Variable(2))),
             &mut bindings
         ));
         assert_eq!(bindings.len(), 1);
-        assert_eq!(*bindings.get("x").unwrap(), Term::Variable("y".to_string()));
+        assert_eq!(*bindings.get(&1).unwrap(), Term::Variable(2));
 
-        let mut bindings = HashMap::<String, Term<i32>>::new();
+        let mut bindings = HashMap::<i64, Term<i32>>::new();
         assert!(unify(
             &Term::Tuple(vec!(
-                Term::Variable("x".to_string()),
-                Term::Variable("x".to_string())
+                Term::Variable(1),
+                Term::Variable(1),
+                Term::Variable(1)
             )),
             &Term::Tuple(vec!(
-                Term::Variable("y".to_string()),
-                Term::Variable("y".to_string())
-            )),
-            &mut bindings
-        ));
-        assert_eq!(bindings.len(), 1);
-        assert_eq!(*bindings.get("x").unwrap(), Term::Variable("y".to_string()));
-
-        let mut bindings = HashMap::<String, Term<i32>>::new();
-        assert!(unify(
-            &Term::Tuple(vec!(
-                Term::Variable("x".to_string()),
-                Term::Variable("x".to_string()),
-                Term::Variable("x".to_string())
-            )),
-            &Term::Tuple(vec!(
-                Term::Variable("y".to_string()),
-                Term::Variable("y".to_string()),
-                Term::Variable("y".to_string())
+                Term::Variable(2),
+                Term::Variable(2),
+                Term::Variable(2)
             )),
             &mut bindings
         ));
         assert_eq!(bindings.len(), 1);
-        assert_eq!(*bindings.get("x").unwrap(), Term::Variable("y".to_string()));
+        assert_eq!(*bindings.get(&1).unwrap(), Term::Variable(2));
 
-        let mut bindings = HashMap::<String, Term<i32>>::new();
+        let mut bindings = HashMap::<i64, Term<i32>>::new();
         assert!(unify(
+            &Term::Tuple(vec!(Term::Variable(1), Term::Variable(2), Term::Atom(42))),
             &Term::Tuple(vec!(
-                Term::Variable("x".to_string()),
-                Term::Variable("y".to_string()),
-                Term::Atom(42)
-            )),
-            &Term::Tuple(vec!(
-                Term::Variable("y".to_string()),
-                Term::Variable("x".to_string()),
-                Term::Variable("x".to_string())
+                Term::Variable(2),
+                Term::Variable(1),
+                Term::Variable(1)
             )),
             &mut bindings
         ));
         assert_eq!(bindings.len(), 2);
-        assert_eq!(*bindings.get("x").unwrap(), Term::Variable("y".to_string()));
-        assert_eq!(*bindings.get("y").unwrap(), Term::Atom(42));
+        assert_eq!(*bindings.get(&1).unwrap(), Term::Variable(2));
+        assert_eq!(*bindings.get(&2).unwrap(), Term::Atom(42));
     }
 }
