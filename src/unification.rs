@@ -1,11 +1,23 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-#[derive(Clone, Debug)]
+pub type Bindings<T> = HashMap<String, Term<T>>;
+
+#[derive(Debug)]
 pub enum Term<T> {
     Atom(T),
     Variable(String),
     Tuple(Vec<Term<T>>),
+}
+
+impl<T: Clone> Clone for Term<T> {
+    fn clone(&self) -> Self {
+        match self {
+            Term::Atom(u) => Term::Atom(u.clone()),
+            Term::Variable(u) => Term::Variable(u.to_string()),
+            Term::Tuple(u) => Term::Tuple(u.to_vec()),
+        }
+    }
 }
 
 impl<T: std::cmp::PartialEq> PartialEq for Term<T> {
@@ -42,7 +54,7 @@ impl<T: std::cmp::PartialEq> PartialEq for Term<T> {
 // until an unbound variable or an atom is encountered. E.g, given bindings that maps x -> y,
 // y -> z, and z -> "ceviche", calling `walk` with the variable `x` will result in the atom
 // "ceviche".
-fn walk<'a, T: Clone>(x: &'a Term<T>, bindings: &'a HashMap<String, Term<T>>) -> &'a Term<T> {
+fn walk<'a, T: Clone>(x: &'a Term<T>, bindings: &'a Bindings<T>) -> &'a Term<T> {
     if let Term::Variable(var) = x {
         if let Some(t) = bindings.get(var) {
             walk(t, bindings)
@@ -65,7 +77,7 @@ fn walk<'a, T: Clone>(x: &'a Term<T>, bindings: &'a HashMap<String, Term<T>>) ->
 pub fn unify<T: std::cmp::PartialEq + Clone>(
     left: &Term<T>,
     right: &Term<T>,
-    bindings: &mut HashMap<String, Term<T>>,
+    bindings: &mut Bindings<T>,
 ) -> bool {
     match left {
         Term::Atom(u) => match right {
