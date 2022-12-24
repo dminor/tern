@@ -1,3 +1,4 @@
+mod logic;
 mod unification;
 
 fn main() {
