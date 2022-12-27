@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-pub type Bindings<T> = HashMap<i64, Term<T>>;
+pub type Substitutions<T> = HashMap<i64, Term<T>>;
 
 #[derive(Debug)]
 pub enum Term<T> {
@@ -54,7 +54,7 @@ impl<T: std::cmp::PartialEq> PartialEq for Term<T> {
 // until an unbound variable or an atom is encountered. E.g, given bindings that maps x -> y,
 // y -> z, and z -> "ceviche", calling `walk` with the variable `x` will result in the atom
 // "ceviche".
-fn walk<'a, T: Clone>(x: &'a Term<T>, bindings: &'a Bindings<T>) -> &'a Term<T> {
+fn walk<'a, T: Clone>(x: &'a Term<T>, bindings: &'a Substitutions<T>) -> &'a Term<T> {
     if let Term::Variable(var) = x {
         if let Some(t) = bindings.get(var) {
             walk(t, bindings)
@@ -77,7 +77,7 @@ fn walk<'a, T: Clone>(x: &'a Term<T>, bindings: &'a Bindings<T>) -> &'a Term<T> 
 pub fn unify<T: std::cmp::PartialEq + Clone>(
     left: &Term<T>,
     right: &Term<T>,
-    bindings: &mut Bindings<T>,
+    bindings: &mut Substitutions<T>,
 ) -> bool {
     match left {
         Term::Atom(u) => match right {
