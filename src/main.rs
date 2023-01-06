@@ -1,4 +1,5 @@
 mod logic;
+mod tokenizer;
 mod unification;
 
 fn main() {
