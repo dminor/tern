@@ -19,11 +19,9 @@ pub enum TokenKind {
     // Keywords
     Conj,
     Disj,
-    Var,
-    Rel,
 
     // Literals
-    Identifier(String),
+    Literal(String),
 }
 
 impl fmt::Display for TokenKind {
@@ -40,11 +38,9 @@ impl fmt::Display for TokenKind {
             TokenKind::RightBracket => write!(f, "]"),
             TokenKind::RightParen => write!(f, ")"),
             TokenKind::Tick => write!(f, "'"),
-            TokenKind::Identifier(s) => write!(f, "{}", s),
             TokenKind::Disj => write!(f, "disj"),
             TokenKind::Conj => write!(f, "conj"),
-            TokenKind::Var => write!(f, "var"),
-            TokenKind::Rel => write!(f, "rel"),
+            TokenKind::Literal(s) => write!(f, "{}", s),
         }
     }
 }
@@ -151,16 +147,8 @@ pub fn scan(src: &str) -> Result<Vec<Token>, TokenizerError> {
                         kind: TokenKind::Disj,
                         offset,
                     }),
-                    "var" => tokens.push(Token {
-                        kind: TokenKind::Var,
-                        offset,
-                    }),
-                    "rel" => tokens.push(Token {
-                        kind: TokenKind::Rel,
-                        offset,
-                    }),
                     _ => tokens.push(Token {
-                        kind: TokenKind::Identifier(s),
+                        kind: TokenKind::Literal(s),
                         offset,
                     }),
                 }
@@ -213,28 +201,28 @@ mod tests {
         scan!(
             "'olive",
             TokenKind::Tick,
-            TokenKind::Identifier("olive".to_string())
+            TokenKind::Literal("olive".to_string())
         );
         scan!(
-            "rel () {
-                'olive == 'oil
-            }({}).next()",
-            TokenKind::Rel,
-            TokenKind::LeftParen,
-            TokenKind::RightParen,
-            TokenKind::LeftBrace,
+            "'olive 'oil",
             TokenKind::Tick,
-            TokenKind::Identifier("olive".to_string()),
+            TokenKind::Literal("olive".to_string()),
+            TokenKind::Tick,
+            TokenKind::Literal("oil".to_string())
+        );
+        scan!(
+            "'olive == 'oil({}).next()",
+            TokenKind::Tick,
+            TokenKind::Literal("olive".to_string()),
             TokenKind::DoubleEquals,
             TokenKind::Tick,
-            TokenKind::Identifier("oil".to_string()),
-            TokenKind::RightBrace,
+            TokenKind::Literal("oil".to_string()),
             TokenKind::LeftParen,
             TokenKind::LeftBrace,
             TokenKind::RightBrace,
             TokenKind::RightParen,
             TokenKind::Dot,
-            TokenKind::Identifier("next".to_string()),
+            TokenKind::Literal("next".to_string()),
             TokenKind::LeftParen,
             TokenKind::RightParen
         );
@@ -242,63 +230,51 @@ mod tests {
             "['olive, 'oil] == ['olive, q]",
             TokenKind::LeftBracket,
             TokenKind::Tick,
-            TokenKind::Identifier("olive".to_string()),
+            TokenKind::Literal("olive".to_string()),
             TokenKind::Comma,
             TokenKind::Tick,
-            TokenKind::Identifier("oil".to_string()),
+            TokenKind::Literal("oil".to_string()),
             TokenKind::RightBracket,
             TokenKind::DoubleEquals,
             TokenKind::LeftBracket,
             TokenKind::Tick,
-            TokenKind::Identifier("olive".to_string()),
+            TokenKind::Literal("olive".to_string()),
             TokenKind::Comma,
-            TokenKind::Identifier("q".to_string()),
+            TokenKind::Literal("q".to_string()),
             TokenKind::RightBracket
         );
         scan!(
             "disj { p == 'red | p == 'bean }",
             TokenKind::Disj,
             TokenKind::LeftBrace,
-            TokenKind::Identifier("p".to_string()),
+            TokenKind::Literal("p".to_string()),
             TokenKind::DoubleEquals,
             TokenKind::Tick,
-            TokenKind::Identifier("red".to_string()),
+            TokenKind::Literal("red".to_string()),
             TokenKind::Pipe,
-            TokenKind::Identifier("p".to_string()),
+            TokenKind::Literal("p".to_string()),
             TokenKind::DoubleEquals,
             TokenKind::Tick,
-            TokenKind::Identifier("bean".to_string()),
+            TokenKind::Literal("bean".to_string()),
             TokenKind::RightBrace
         );
         scan!(
-            "rel Mother(x) {
-                var y
-                conj {
-                  Female(x), Parent(y, x)
-                }
-              }",
-            TokenKind::Rel,
-            TokenKind::Identifier("Mother".to_string()),
-            TokenKind::LeftParen,
-            TokenKind::Identifier("x".to_string()),
-            TokenKind::RightParen,
-            TokenKind::LeftBrace,
-            TokenKind::Var,
-            TokenKind::Identifier("y".to_string()),
+            "conj {
+                Female(x), Parent(y, x)
+            }",
             TokenKind::Conj,
             TokenKind::LeftBrace,
-            TokenKind::Identifier("Female".to_string()),
+            TokenKind::Literal("Female".to_string()),
             TokenKind::LeftParen,
-            TokenKind::Identifier("x".to_string()),
+            TokenKind::Literal("x".to_string()),
             TokenKind::RightParen,
             TokenKind::Comma,
-            TokenKind::Identifier("Parent".to_string()),
+            TokenKind::Literal("Parent".to_string()),
             TokenKind::LeftParen,
-            TokenKind::Identifier("y".to_string()),
+            TokenKind::Literal("y".to_string()),
             TokenKind::Comma,
-            TokenKind::Identifier("x".to_string()),
+            TokenKind::Literal("x".to_string()),
             TokenKind::RightParen,
-            TokenKind::RightBrace,
             TokenKind::RightBrace
         );
         scanfails!("=", "Unexpected token while scanning `==`", 1);

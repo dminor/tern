@@ -1,4 +1,5 @@
 mod logic;
+mod parser;
 mod tokenizer;
 mod unification;
 
