@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-pub type Substitutions<T> = HashMap<i64, Term<T>>;
+pub type Substitutions<T> = HashMap<u64, Term<T>>;
 
 #[derive(Debug)]
 pub enum Term<T> {
     Atom(T),
-    Variable(i64),
+    Variable(u64),
     Tuple(Vec<Term<T>>),
 }
 
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_walk() {
-        let substs = HashMap::<i64, Term<i32>>::new();
+        let substs = HashMap::<u64, Term<i32>>::new();
         assert_eq!(walk(&Term::Variable(1), &substs), &Term::Variable(1));
         assert_eq!(walk(&Term::Atom(42), &substs), &Term::Atom(42));
 
@@ -196,12 +196,12 @@ mod tests {
         assert_eq!(*substs.get(&1).unwrap(), Term::Atom(2));
         assert_eq!(*substs.get(&2).unwrap(), Term::Atom(1));
 
-        let mut substs = HashMap::<i64, Term<i32>>::new();
+        let mut substs = HashMap::<u64, Term<i32>>::new();
         assert!(unify(&Term::Variable(1), &Term::Variable(2), &mut substs));
         assert_eq!(substs.len(), 1);
         assert_eq!(*substs.get(&1).unwrap(), Term::Variable(2));
 
-        let mut substs = HashMap::<i64, Term<i32>>::new();
+        let mut substs = HashMap::<u64, Term<i32>>::new();
         assert!(unify(
             &Term::Tuple(vec!(Term::Variable(1), Term::Variable(1))),
             &Term::Tuple(vec!(Term::Variable(2), Term::Variable(2))),
@@ -210,7 +210,7 @@ mod tests {
         assert_eq!(substs.len(), 1);
         assert_eq!(*substs.get(&1).unwrap(), Term::Variable(2));
 
-        let mut substs = HashMap::<i64, Term<i32>>::new();
+        let mut substs = HashMap::<u64, Term<i32>>::new();
         assert!(unify(
             &Term::Tuple(vec!(
                 Term::Variable(1),
@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(substs.len(), 1);
         assert_eq!(*substs.get(&1).unwrap(), Term::Variable(2));
 
-        let mut substs = HashMap::<i64, Term<i32>>::new();
+        let mut substs = HashMap::<u64, Term<i32>>::new();
         assert!(unify(
             &Term::Tuple(vec!(Term::Variable(1), Term::Variable(2), Term::Atom(42))),
             &Term::Tuple(vec!(

@@ -70,14 +70,20 @@ impl<T> Iterator for FailureIterator<T> {
 // The EqualsExpr goal produces either a singleton stream, if left and
 // right unify, or the empty stream.
 #[derive(Clone)]
-pub struct EqualsExpr<T> {
+pub struct Unify<T> {
     // Left term.
     left: Term<T>,
     // Right term.
     right: Term<T>,
 }
 
-pub struct EqualsExprIterator<T> {
+impl<T> Unify<T> {
+    pub fn new(left: Term<T>, right: Term<T>) -> Self {
+        Unify { left, right }
+    }
+}
+
+pub struct UnifyIterator<T> {
     // True if we've evaluated the result.
     forced: bool,
     // Left term.
@@ -88,11 +94,11 @@ pub struct EqualsExprIterator<T> {
     substs: Substitutions<T>,
 }
 
-impl<T: std::cmp::PartialEq + Clone> Goal<T> for EqualsExpr<T> {
-    type SubstitutionsIterator = EqualsExprIterator<T>;
+impl<T: std::cmp::PartialEq + Clone> Goal<T> for Unify<T> {
+    type SubstitutionsIterator = UnifyIterator<T>;
 
-    fn eval(&self, substs: &Substitutions<T>) -> EqualsExprIterator<T> {
-        EqualsExprIterator {
+    fn eval(&self, substs: &Substitutions<T>) -> UnifyIterator<T> {
+        UnifyIterator {
             forced: false,
             left: self.left.clone(),
             right: self.right.clone(),
@@ -101,7 +107,7 @@ impl<T: std::cmp::PartialEq + Clone> Goal<T> for EqualsExpr<T> {
     }
 }
 
-impl<T: std::cmp::PartialEq + Clone> Iterator for EqualsExprIterator<T> {
+impl<T: std::cmp::PartialEq + Clone> Iterator for UnifyIterator<T> {
     type Item = Substitutions<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -285,7 +291,7 @@ mod tests {
 
     #[test]
     fn test_succeed() {
-        let substs: HashMap<i64, Term<u32>> = HashMap::new();
+        let substs: HashMap<u64, Term<u32>> = HashMap::new();
         let success = Succeed {};
         let mut iter = success.eval(&substs);
         assert_eq!(iter.next().unwrap(), substs);
@@ -294,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_fail() {
-        let substs: HashMap<i64, Term<u32>> = HashMap::new();
+        let substs: HashMap<u64, Term<u32>> = HashMap::new();
         let failure = Fail {};
         let mut iter = failure.eval(&substs);
         assert_eq!(iter.next(), None);
@@ -303,21 +309,21 @@ mod tests {
     #[test]
     fn test_equalsexpr() {
         let substs = HashMap::new();
-        let equals = EqualsExpr {
+        let equals = Unify {
             left: Term::Atom("olive".to_string()),
             right: Term::Atom("olive".to_string()),
         };
         let mut iter = equals.eval(&substs);
         assert_eq!(iter.next().unwrap(), substs);
 
-        let equals = EqualsExpr {
+        let equals = Unify {
             left: Term::Atom("olive".to_string()),
             right: Term::Atom("oil".to_string()),
         };
         let mut iter = equals.eval(&substs);
         assert_eq!(iter.next(), None);
 
-        let equals = EqualsExpr {
+        let equals = Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         };
@@ -336,7 +342,7 @@ mod tests {
         assert_eq!(iter.next(), None);
 
         let left = Fail {};
-        let right = EqualsExpr {
+        let right = Unify {
             left: Term::Variable(1),
             right: Term::Atom("oil".to_string()),
         };
@@ -347,7 +353,7 @@ mod tests {
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("oil".to_string()));
         assert_eq!(iter.next(), None);
 
-        let left = EqualsExpr {
+        let left = Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         };
@@ -359,11 +365,11 @@ mod tests {
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
         assert_eq!(iter.next(), None);
 
-        let left = EqualsExpr {
+        let left = Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         };
-        let right = EqualsExpr {
+        let right = Unify {
             left: Term::Variable(1),
             right: Term::Atom("oil".to_string()),
         };
@@ -386,7 +392,7 @@ mod tests {
         assert_eq!(iter.next(), None);
 
         let left = Fail {};
-        let right = EqualsExpr {
+        let right = Unify {
             left: Term::Variable(1),
             right: Term::Atom("oil".to_string()),
         };
@@ -394,7 +400,7 @@ mod tests {
         let mut iter = conj2.eval(&substs);
         assert_eq!(iter.next(), None);
 
-        let left = EqualsExpr {
+        let left = Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         };
@@ -403,11 +409,11 @@ mod tests {
         let mut iter = conj2.eval(&substs);
         assert_eq!(iter.next(), None);
 
-        let left = EqualsExpr {
+        let left = Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         };
-        let right = EqualsExpr {
+        let right = Unify {
             left: Term::Variable(1),
             right: Term::Atom("oil".to_string()),
         };
@@ -415,11 +421,11 @@ mod tests {
         let mut iter = conj2.eval(&substs);
         assert_eq!(iter.next(), None);
 
-        let left = EqualsExpr {
+        let left = Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         };
-        let right = EqualsExpr {
+        let right = Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         };
@@ -430,11 +436,11 @@ mod tests {
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
         assert_eq!(iter.next(), None);
 
-        let left = EqualsExpr {
+        let left = Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         };
-        let right = EqualsExpr {
+        let right = Unify {
             left: Term::Variable(2),
             right: Term::Atom("oil".to_string()),
         };
@@ -447,21 +453,21 @@ mod tests {
         assert_eq!(iter.next(), None);
 
         let left = Conj2::new(
-            EqualsExpr {
+            Unify {
                 left: Term::Variable(1),
                 right: Term::Atom("split".to_string()),
             },
-            EqualsExpr {
+            Unify {
                 left: Term::Variable(2),
                 right: Term::Atom("pea".to_string()),
             },
         );
         let right = Conj2::new(
-            EqualsExpr {
+            Unify {
                 left: Term::Variable(1),
                 right: Term::Atom("red".to_string()),
             },
-            EqualsExpr {
+            Unify {
                 left: Term::Variable(2),
                 right: Term::Atom("bean".to_string()),
             },
