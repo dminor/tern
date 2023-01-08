@@ -1,29 +1,25 @@
 use crate::unification::{unify, Substitutions, Term};
 use std::marker::PhantomData;
+use std::rc::Rc;
 
 // A goal defines a single function eval() that takes substitutions as an
 // argument, and produces a stream of substitutions as a result.
 pub trait Goal<T> {
-    type SubstitutionsIterator: Iterator<Item = Substitutions<T>>;
-
-    fn eval(&self, substs: &Substitutions<T>) -> Self::SubstitutionsIterator;
+    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>>;
 }
 
 // The Succeed goal produces a singleton stream.
-#[derive(Clone)]
 pub struct Succeed {}
 
 pub struct SucceedIterator<T> {
     substs: Option<Substitutions<T>>,
 }
 
-impl<T: Clone> Goal<T> for Succeed {
-    type SubstitutionsIterator = SucceedIterator<T>;
-
-    fn eval(&self, substs: &Substitutions<T>) -> Self::SubstitutionsIterator {
-        SucceedIterator {
+impl<T: Clone + 'static> Goal<T> for Succeed {
+    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+        Box::new(SucceedIterator {
             substs: Some(substs.clone()),
-        }
+        })
     }
 }
 
@@ -42,20 +38,17 @@ impl<T: Clone> Iterator for SucceedIterator<T> {
 }
 
 // The Fail goal produces the empty stream.
-#[derive(Clone)]
 pub struct Fail {}
 
 pub struct FailureIterator<T> {
     phantom: PhantomData<T>,
 }
 
-impl<T> Goal<T> for Fail {
-    type SubstitutionsIterator = FailureIterator<T>;
-
-    fn eval(&self, _: &Substitutions<T>) -> FailureIterator<T> {
-        FailureIterator {
+impl<T: 'static> Goal<T> for Fail {
+    fn eval(&self, _: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+        Box::new(FailureIterator {
             phantom: PhantomData,
-        }
+        })
     }
 }
 
@@ -94,16 +87,14 @@ pub struct UnifyIterator<T> {
     substs: Substitutions<T>,
 }
 
-impl<T: std::cmp::PartialEq + Clone> Goal<T> for Unify<T> {
-    type SubstitutionsIterator = UnifyIterator<T>;
-
-    fn eval(&self, substs: &Substitutions<T>) -> UnifyIterator<T> {
-        UnifyIterator {
+impl<T: std::cmp::PartialEq + Clone + 'static> Goal<T> for Unify<T> {
+    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+        Box::new(UnifyIterator {
             forced: false,
             left: self.left.clone(),
             right: self.right.clone(),
             substs: substs.clone(),
-        }
+        })
     }
 }
 
@@ -131,56 +122,46 @@ impl<T: std::cmp::PartialEq + Clone> Iterator for UnifyIterator<T> {
 // substitutions produced by the left and the right goals, continuing until
 // both streams are empty. The Disj2 goal succeeds if either of the
 // left or the right goal succeeds.
-#[derive(Clone)]
-pub struct Disj2<T, G1: Goal<T>, G2: Goal<T>> {
+pub struct Disj2<T> {
     // Left goal.
-    left: G1,
+    left: Rc<dyn Goal<T>>,
     // Right goal.
-    right: G2,
+    right: Rc<dyn Goal<T>>,
     phantom: PhantomData<T>,
 }
 
-impl<T, G1: Goal<T>, G2: Goal<T>> Disj2<T, G1, G2> {
-    fn new(left: G1, right: G2) -> Self {
+impl<T> Disj2<T> {
+    pub fn new(left: Rc<dyn Goal<T>>, right: Rc<dyn Goal<T>>) -> Self {
         Disj2 {
-            left,
-            right,
+            left: left.clone(),
+            right: right.clone(),
             phantom: PhantomData,
         }
     }
 }
 
-pub struct Disj2Iterator<
-    T,
-    I1: Iterator<Item = Substitutions<T>>,
-    I2: Iterator<Item = Substitutions<T>>,
-> {
+pub struct Disj2Iterator<T> {
     // Iterator from left goal.
-    left: I1,
+    left: Box<dyn Iterator<Item = Substitutions<T>>>,
     // Iterator from right goal.
-    right: I2,
+    right: Box<dyn Iterator<Item = Substitutions<T>>>,
     // True if we should take a result from the left stream next.
     interleave_left: bool,
     phantom: PhantomData<T>,
 }
 
-impl<T: Clone, G1: Goal<T> + Clone, G2: Goal<T> + Clone> Goal<T> for Disj2<T, G1, G2> {
-    type SubstitutionsIterator =
-        Disj2Iterator<T, G1::SubstitutionsIterator, G2::SubstitutionsIterator>;
-
-    fn eval(&self, substs: &Substitutions<T>) -> Self::SubstitutionsIterator {
-        Disj2Iterator {
+impl<T: Clone + 'static> Goal<T> for Disj2<T> {
+    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+        Box::new(Disj2Iterator {
             left: self.left.eval(substs),
             right: self.right.eval(substs),
             interleave_left: true,
             phantom: PhantomData,
-        }
+        })
     }
 }
 
-impl<T: Clone, I1: Iterator<Item = Substitutions<T>>, I2: Iterator<Item = Substitutions<T>>>
-    Iterator for Disj2Iterator<T, I1, I2>
-{
+impl<T: Clone> Iterator for Disj2Iterator<T> {
     type Item = Substitutions<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -199,61 +180,46 @@ impl<T: Clone, I1: Iterator<Item = Substitutions<T>>, I2: Iterator<Item = Substi
 // The Conj2 goal produces a stream of substitutions that results from mapping
 // the right goal over the stream of substitutions produced by the left goal. Conj2
 // succeeds only if both goals succeed.
-#[derive(Clone)]
-pub struct Conj2<T, G1: Goal<T>, G2: Goal<T>> {
+pub struct Conj2<T> {
     // Left goal.
-    left: G1,
+    left: Rc<dyn Goal<T>>,
     // Right goal.
-    right: G2,
+    right: Rc<dyn Goal<T>>,
     phantom: PhantomData<T>,
 }
 
-impl<T, G1: Goal<T>, G2: Goal<T>> Conj2<T, G1, G2> {
-    fn new(left: G1, right: G2) -> Self {
+impl<T> Conj2<T> {
+    pub fn new(left: Rc<dyn Goal<T>>, right: Rc<dyn Goal<T>>) -> Self {
         Conj2 {
-            left,
-            right,
+            left: left.clone(),
+            right: right.clone(),
             phantom: PhantomData,
         }
     }
 }
 
-pub struct Conj2Iterator<
-    T: Clone,
-    G: Goal<T>,
-    I1: Iterator<Item = Substitutions<T>>,
-    I2: Iterator<Item = Substitutions<T>>,
-> {
+pub struct Conj2Iterator<T: Clone> {
     // Right goal.
-    right: G,
+    right: Rc<dyn Goal<T>>,
     // Stream produced from applying right goal to substitutions from the left terator.
-    right_iterator: Option<I1>,
+    right_iterator: Option<Box<dyn Iterator<Item = Substitutions<T>>>>,
     // Left iterator.
-    left_iterator: I2,
+    left_iterator: Box<dyn Iterator<Item = Substitutions<T>>>,
     phantom: PhantomData<T>,
 }
 
-impl<T: Clone, G1: Goal<T> + Clone, G2: Goal<T> + Clone> Goal<T> for Conj2<T, G1, G2> {
-    type SubstitutionsIterator =
-        Conj2Iterator<T, G2, G2::SubstitutionsIterator, G1::SubstitutionsIterator>;
-
-    fn eval(&self, substs: &Substitutions<T>) -> Self::SubstitutionsIterator {
-        Conj2Iterator {
+impl<T: Clone + 'static> Goal<T> for Conj2<T> {
+    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+        Box::new(Conj2Iterator {
             right: self.right.clone(),
             right_iterator: None,
             left_iterator: self.left.eval(substs),
             phantom: PhantomData,
-        }
+        })
     }
 }
 
-impl<
-        T: Clone,
-        G: Goal<T, SubstitutionsIterator = I1>,
-        I1: Iterator<Item = Substitutions<T>>,
-        I2: Iterator<Item = Substitutions<T>>,
-    > Iterator for Conj2Iterator<T, G, I1, I2>
-{
+impl<T: Clone> Iterator for Conj2Iterator<T> {
     type Item = Substitutions<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -286,6 +252,7 @@ impl<
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::rc::Rc;
 
     use crate::logic::*;
 
@@ -337,15 +304,15 @@ mod tests {
     #[test]
     fn test_disj2() {
         let substs = HashMap::new();
-        let disj2 = Disj2::new(Fail {}, Fail {});
+        let disj2 = Disj2::new(Rc::new(Fail {}), Rc::new(Fail {}));
         let mut iter = disj2.eval(&substs);
         assert_eq!(iter.next(), None);
 
-        let left = Fail {};
-        let right = Unify {
+        let left = Rc::new(Fail {});
+        let right = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("oil".to_string()),
-        };
+        });
         let disj2 = Disj2::new(left, right);
         let mut iter = disj2.eval(&substs);
         let result = iter.next().unwrap();
@@ -353,11 +320,11 @@ mod tests {
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("oil".to_string()));
         assert_eq!(iter.next(), None);
 
-        let left = Unify {
+        let left = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
-        };
-        let right = Fail {};
+        });
+        let right = Rc::new(Fail {});
         let disj2 = Disj2::new(left, right);
         let mut iter = disj2.eval(&substs);
         let result = iter.next().unwrap();
@@ -365,14 +332,14 @@ mod tests {
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
         assert_eq!(iter.next(), None);
 
-        let left = Unify {
+        let left = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
-        };
-        let right = Unify {
+        });
+        let right = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("oil".to_string()),
-        };
+        });
         let disj2 = Disj2::new(left, right);
         let mut iter = disj2.eval(&substs);
         let result = iter.next().unwrap();
@@ -387,48 +354,48 @@ mod tests {
     #[test]
     fn test_conj2() {
         let substs = HashMap::new();
-        let conj2 = Conj2::new(Fail {}, Fail {});
+        let conj2 = Conj2::new(Rc::new(Fail {}), Rc::new(Fail {}));
         let mut iter = conj2.eval(&substs);
         assert_eq!(iter.next(), None);
 
-        let left = Fail {};
-        let right = Unify {
+        let left = Rc::new(Fail {});
+        let right = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("oil".to_string()),
-        };
+        });
         let conj2 = Conj2::new(left, right);
         let mut iter = conj2.eval(&substs);
         assert_eq!(iter.next(), None);
 
-        let left = Unify {
+        let left = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
-        };
-        let right = Fail {};
+        });
+        let right = Rc::new(Fail {});
         let conj2 = Conj2::new(left, right);
         let mut iter = conj2.eval(&substs);
         assert_eq!(iter.next(), None);
 
-        let left = Unify {
+        let left = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
-        };
-        let right = Unify {
+        });
+        let right = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("oil".to_string()),
-        };
+        });
         let conj2 = Conj2::new(left, right);
         let mut iter = conj2.eval(&substs);
         assert_eq!(iter.next(), None);
 
-        let left = Unify {
+        let left = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
-        };
-        let right = Unify {
+        });
+        let right = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
-        };
+        });
         let conj2 = Conj2::new(left, right);
         let mut iter = conj2.eval(&substs);
         let result = iter.next().unwrap();
@@ -436,14 +403,14 @@ mod tests {
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
         assert_eq!(iter.next(), None);
 
-        let left = Unify {
+        let left = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
-        };
-        let right = Unify {
+        });
+        let right = Rc::new(Unify {
             left: Term::Variable(2),
             right: Term::Atom("oil".to_string()),
-        };
+        });
         let conj2 = Conj2::new(left, right);
         let mut iter = conj2.eval(&substs);
         let result = iter.next().unwrap();
@@ -452,26 +419,26 @@ mod tests {
         assert_eq!(*result.get(&2).unwrap(), Term::Atom("oil".to_string()));
         assert_eq!(iter.next(), None);
 
-        let left = Conj2::new(
-            Unify {
+        let left = Rc::new(Conj2::new(
+            Rc::new(Unify {
                 left: Term::Variable(1),
                 right: Term::Atom("split".to_string()),
-            },
-            Unify {
+            }),
+            Rc::new(Unify {
                 left: Term::Variable(2),
                 right: Term::Atom("pea".to_string()),
-            },
-        );
-        let right = Conj2::new(
-            Unify {
+            }),
+        ));
+        let right = Rc::new(Conj2::new(
+            Rc::new(Unify {
                 left: Term::Variable(1),
                 right: Term::Atom("red".to_string()),
-            },
-            Unify {
+            }),
+            Rc::new(Unify {
                 left: Term::Variable(2),
                 right: Term::Atom("bean".to_string()),
-            },
-        );
+            }),
+        ));
         let disj2 = Disj2::new(left, right);
         let mut iter = disj2.eval(&substs);
         let result = iter.next().unwrap();
