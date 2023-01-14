@@ -8,58 +8,6 @@ pub trait Goal<T> {
     fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>>;
 }
 
-// The Succeed goal produces a singleton stream.
-pub struct Succeed {}
-
-pub struct SucceedIterator<T> {
-    substs: Option<Substitutions<T>>,
-}
-
-impl<T: Clone + 'static> Goal<T> for Succeed {
-    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
-        Box::new(SucceedIterator {
-            substs: Some(substs.clone()),
-        })
-    }
-}
-
-impl<T: Clone> Iterator for SucceedIterator<T> {
-    type Item = Substitutions<T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.substs.is_some() {
-            let result = self.substs.clone();
-            self.substs = None;
-            result
-        } else {
-            None
-        }
-    }
-}
-
-// The Fail goal produces the empty stream.
-pub struct Fail {}
-
-pub struct FailureIterator<T> {
-    phantom: PhantomData<T>,
-}
-
-impl<T: 'static> Goal<T> for Fail {
-    fn eval(&self, _: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
-        Box::new(FailureIterator {
-            phantom: PhantomData,
-        })
-    }
-}
-
-impl<T> Iterator for FailureIterator<T> {
-    type Item = Substitutions<T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        None
-    }
-}
-
 // The EqualsExpr goal produces either a singleton stream, if left and
 // right unify, or the empty stream.
 #[derive(Clone)]
@@ -255,6 +203,58 @@ mod tests {
     use std::rc::Rc;
 
     use crate::logic::*;
+
+    // The Succeed goal produces a singleton stream.
+    pub struct Succeed {}
+
+    pub struct SucceedIterator<T> {
+        substs: Option<Substitutions<T>>,
+    }
+
+    impl<T: Clone + 'static> Goal<T> for Succeed {
+        fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+            Box::new(SucceedIterator {
+                substs: Some(substs.clone()),
+            })
+        }
+    }
+
+    impl<T: Clone> Iterator for SucceedIterator<T> {
+        type Item = Substitutions<T>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.substs.is_some() {
+                let result = self.substs.clone();
+                self.substs = None;
+                result
+            } else {
+                None
+            }
+        }
+    }
+
+    // The Fail goal produces the empty stream.
+    pub struct Fail {}
+
+    pub struct FailureIterator<T> {
+        phantom: PhantomData<T>,
+    }
+
+    impl<T: 'static> Goal<T> for Fail {
+        fn eval(&self, _: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+            Box::new(FailureIterator {
+                phantom: PhantomData,
+            })
+        }
+    }
+
+    impl<T> Iterator for FailureIterator<T> {
+        type Item = Substitutions<T>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            None
+        }
+    }
 
     #[test]
     fn test_succeed() {
