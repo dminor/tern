@@ -3,6 +3,7 @@ use crate::unification;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::hash::Hash;
 use std::rc::Rc;
 
 pub type AtomType = u64;
@@ -65,6 +66,9 @@ pub struct VirtualMachine {
     pub instructions: Vec<Opcode>,
     pub ip: usize,
 
+    next_id: u64,
+    pub interned: HashMap<String, u64>,
+
     pub stack: Vec<Value>,
 }
 
@@ -110,6 +114,16 @@ macro_rules! buildgoal {
 }
 
 impl VirtualMachine {
+    pub fn intern(&mut self, s: &String) -> u64 {
+        if let Some(id) = self.interned.get(s) {
+            *id
+        } else {
+            self.next_id += 1;
+            self.interned.insert(s.to_string(), self.next_id);
+            self.next_id
+        }
+    }
+
     pub fn run(&mut self) -> Result<(), RuntimeError> {
         while self.ip < self.instructions.len() {
             match &self.instructions[self.ip] {
@@ -202,6 +216,8 @@ impl VirtualMachine {
         Self {
             instructions: Vec::new(),
             ip: 0,
+            next_id: 0,
+            interned: HashMap::new(),
             stack: Vec::new(),
         }
     }
