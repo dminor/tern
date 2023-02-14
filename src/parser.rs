@@ -14,30 +14,30 @@ impl fmt::Display for AST {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             AST::Conj(terms) => {
-                write!(f, "Conj {{")?;
+                write!(f, "conj {{ ")?;
                 let mut first = true;
                 for term in terms {
                     if !first {
-                        write!(f, ", {}", term)?;
+                        write!(f, " , {}", term)?;
                     } else {
                         first = false;
                         write!(f, "{}", term)?;
                     }
                 }
-                write!(f, "}}")
+                write!(f, " }}")
             }
             AST::Disj(terms) => {
-                write!(f, "Disj {{")?;
+                write!(f, "disj {{ ")?;
                 let mut first = true;
                 for term in terms {
                     if !first {
-                        write!(f, ", {}", term)?;
+                        write!(f, " | {}", term)?;
                     } else {
                         first = false;
                         write!(f, "{}", term)?;
                     }
                 }
-                write!(f, "}}")
+                write!(f, " }}")
             }
             AST::Equals(left, right) => write!(f, "{} == {}", left, right),
             AST::Atom(atom) => write!(f, "'{}", atom),
@@ -70,10 +70,42 @@ fn goal(
     if let Some(token) = tokens.peek() {
         match token.kind {
             TokenKind::Conj => {
-                todo!()
+                state.offset = token.offset;
+                tokens.next();
+                if let Some(token) = tokens.next() {
+                    if token.kind != TokenKind::LeftBrace {
+                        Err(ParseError {
+                            msg: "Expected { after conj.".to_string(),
+                            offset: state.offset,
+                        })
+                    } else {
+                        conj(state, tokens)
+                    }
+                } else {
+                    Err(ParseError {
+                        msg: "Unexpected end of input while parsing conj.".to_string(),
+                        offset: state.offset,
+                    })
+                }
             }
             TokenKind::Disj => {
-                todo!()
+                state.offset = token.offset;
+                tokens.next();
+                if let Some(token) = tokens.next() {
+                    if token.kind != TokenKind::LeftBrace {
+                        Err(ParseError {
+                            msg: "Expected { after disj.".to_string(),
+                            offset: state.offset,
+                        })
+                    } else {
+                        disj(state, tokens)
+                    }
+                } else {
+                    Err(ParseError {
+                        msg: "Unexpected end of input while parsing disj.".to_string(),
+                        offset: state.offset,
+                    })
+                }
             }
             TokenKind::Tick => equals(state, tokens),
             _ => Err(ParseError {
@@ -87,6 +119,76 @@ fn goal(
             offset: state.offset,
         })
     }
+}
+
+fn conj(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, ParseError> {
+    let mut goals: Vec<AST> = Vec::new();
+    while tokens.peek().is_some() {
+        goals.push(goal(state, tokens)?);
+        if let Some(token) = tokens.peek() {
+            match token.kind {
+                TokenKind::Comma => {
+                    state.offset = token.offset;
+                    tokens.next();
+                }
+                TokenKind::RightBrace => {
+                    state.offset = token.offset;
+                    tokens.next();
+                    break;
+                }
+                _ => {
+                    return Err(ParseError {
+                        msg: "Expected `,` or `}` while parsing conj.".to_string(),
+                        offset: state.offset,
+                    });
+                }
+            }
+        } else {
+            return Err(ParseError {
+                msg: "Unexpected end of input while parsing conj.".to_string(),
+                offset: state.offset,
+            });
+        }
+    }
+    Ok(AST::Conj(goals))
+}
+
+fn disj(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, ParseError> {
+    let mut goals: Vec<AST> = Vec::new();
+    while tokens.peek().is_some() {
+        goals.push(goal(state, tokens)?);
+        if let Some(token) = tokens.peek() {
+            match token.kind {
+                TokenKind::Pipe => {
+                    state.offset = token.offset;
+                    tokens.next();
+                }
+                TokenKind::RightBrace => {
+                    state.offset = token.offset;
+                    tokens.next();
+                    break;
+                }
+                _ => {
+                    return Err(ParseError {
+                        msg: "Expected `|` or `}` while parsing disj.".to_string(),
+                        offset: state.offset,
+                    });
+                }
+            }
+        } else {
+            return Err(ParseError {
+                msg: "Unexpected end of input while parsing disj.".to_string(),
+                offset: state.offset,
+            });
+        }
+    }
+    Ok(AST::Disj(goals))
 }
 
 fn equals(
@@ -224,5 +326,21 @@ mod tests {
         );
         parsefails!("'olive", "Unexpected end of input while parsing equals.", 5);
         parsefails!("'olive 'oil", "Expected `==` while parsing equals.", 5);
+        parse!(
+            "conj { 'red == 'red , 'bean == 'bean }",
+            "conj { 'red == 'red , 'bean == 'bean }"
+        );
+        parse!(
+            "disj { 'red == 'red | 'bean == 'bean }",
+            "disj { 'red == 'red | 'bean == 'bean }"
+        );
+        parse!(
+            "disj { 'red == 'red | conj { 'red == 'red , 'bean == 'bean } }",
+            "disj { 'red == 'red | conj { 'red == 'red , 'bean == 'bean } }"
+        );
+        parse!(
+            "conj { 'red == 'red , disj { 'red == 'red | 'bean == 'bean } }",
+            "conj { 'red == 'red , disj { 'red == 'red | 'bean == 'bean } }"
+        );
     }
 }
