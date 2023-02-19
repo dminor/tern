@@ -79,6 +79,7 @@ fn goal(
                             offset: state.offset,
                         })
                     } else {
+                        state.offset = token.offset;
                         conj(state, tokens)
                     }
                 } else {
@@ -98,6 +99,7 @@ fn goal(
                             offset: state.offset,
                         })
                     } else {
+                        state.offset = token.offset;
                         disj(state, tokens)
                     }
                 } else {
@@ -153,7 +155,14 @@ fn conj(
             });
         }
     }
-    Ok(AST::Conj(goals))
+    return match goals.len() {
+        0 => Err(ParseError {
+            msg: "Empty conj expression.".to_string(),
+            offset: state.offset,
+        }),
+        1 => Ok(goals.remove(0)),
+        _ => Ok(AST::Conj(goals)),
+    };
 }
 
 fn disj(
@@ -188,7 +197,15 @@ fn disj(
             });
         }
     }
-    Ok(AST::Disj(goals))
+
+    return match goals.len() {
+        0 => Err(ParseError {
+            msg: "Empty disj expression.".to_string(),
+            offset: state.offset,
+        }),
+        1 => Ok(goals.remove(0)),
+        _ => Ok(AST::Disj(goals)),
+    };
 }
 
 fn equals(
@@ -341,6 +358,18 @@ mod tests {
         parse!(
             "conj { 'red == 'red , disj { 'red == 'red | 'bean == 'bean } }",
             "conj { 'red == 'red , disj { 'red == 'red | 'bean == 'bean } }"
+        );
+        parse!("conj { 'red == 'red  }", "'red == 'red");
+        parse!("disj { 'red == 'red  }", "'red == 'red");
+        parsefails!(
+            "conj {}",
+            "Expected conj, disj or equals while parsing goal.",
+            5
+        );
+        parsefails!(
+            "disj {}",
+            "Expected conj, disj or equals while parsing goal.",
+            5
         );
     }
 }
