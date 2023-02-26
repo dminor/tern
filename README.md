@@ -8,16 +8,16 @@ in a dynamically typed language.
 
 Reserved Keywords
 -----------------
-The following keywords are reserved: `conj` and `disj`.
+The following keywords are reserved: `conj`, `disj` and `var`.
 
 Syntax
 ------
 
-    goal     -> disj | conj | equals
+    goal     -> disj | conj | var | equals
     relation -> relname varlist
     disj     -> "disj" "{" (goal "|")* goal "}"
-    conj     -> "conj" "{" conjbody "}"
-    conjbody -> (goal ",")* goal
+    conj     -> "conj" "{" (goal ",")* goal "}"
+    var      -> var varlist "{" goal "}"
     equals   -> term "==" term
     term     -> atom | variable | "[" (term + ",")* term "]" | relation
     atom     -> "'"[A-Za-z0-9]+

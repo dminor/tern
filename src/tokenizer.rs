@@ -19,6 +19,7 @@ pub enum TokenKind {
     // Keywords
     Conj,
     Disj,
+    Var,
 
     // Literals
     Literal(String),
@@ -40,6 +41,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Tick => write!(f, "'"),
             TokenKind::Disj => write!(f, "disj"),
             TokenKind::Conj => write!(f, "conj"),
+            TokenKind::Var => write!(f, "var"),
             TokenKind::Literal(s) => write!(f, "{}", s),
         }
     }
@@ -145,6 +147,10 @@ pub fn scan(src: &str) -> Result<Vec<Token>, TokenizerError> {
                     }),
                     "disj" => tokens.push(Token {
                         kind: TokenKind::Disj,
+                        offset,
+                    }),
+                    "var" => tokens.push(Token {
+                        kind: TokenKind::Var,
                         offset,
                     }),
                     _ => tokens.push(Token {
@@ -278,5 +284,18 @@ mod tests {
             TokenKind::RightBrace
         );
         scanfails!("=", "Unexpected token while scanning `==`", 1);
+        scan!(
+            "var (q) { 'olive == q }",
+            TokenKind::Var,
+            TokenKind::LeftParen,
+            TokenKind::Literal("q".to_string()),
+            TokenKind::RightParen,
+            TokenKind::LeftBrace,
+            TokenKind::Tick,
+            TokenKind::Literal("olive".to_string()),
+            TokenKind::DoubleEquals,
+            TokenKind::Literal("q".to_string()),
+            TokenKind::RightBrace
+        );
     }
 }
