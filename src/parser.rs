@@ -7,7 +7,9 @@ pub enum AST {
     Conj(Vec<AST>),
     Disj(Vec<AST>),
     Equals(Box<AST>, Box<AST>),
+    Var(Vec<AST>, Box<AST>),
     Atom(String),
+    Variable(String),
 }
 
 impl fmt::Display for AST {
@@ -40,7 +42,21 @@ impl fmt::Display for AST {
                 write!(f, " }}")
             }
             AST::Equals(left, right) => write!(f, "{} == {}", left, right),
+            AST::Var(declarations, body) => {
+                write!(f, "var (")?;
+                let mut first = true;
+                for declaration in declarations {
+                    if !first {
+                        write!(f, ", {}", declaration)?;
+                    } else {
+                        first = false;
+                        write!(f, "{}", declaration)?;
+                    }
+                }
+                write!(f, ") {{ {} }}", body)
+            }
             AST::Atom(atom) => write!(f, "'{}", atom),
+            AST::Variable(name) => write!(f, "{}", name),
         }
     }
 }
@@ -109,7 +125,12 @@ fn goal(
                     })
                 }
             }
-            TokenKind::Tick => equals(state, tokens),
+            TokenKind::Tick | TokenKind::Literal(_) => equals(state, tokens),
+            TokenKind::Var => {
+                state.offset = token.offset;
+                tokens.next();
+                var(state, tokens)
+            }
             _ => Err(ParseError {
                 msg: "Expected conj, disj or equals while parsing goal.".to_string(),
                 offset: state.offset,
@@ -155,14 +176,14 @@ fn conj(
             });
         }
     }
-    return match goals.len() {
+    match goals.len() {
         0 => Err(ParseError {
             msg: "Empty conj expression.".to_string(),
             offset: state.offset,
         }),
         1 => Ok(goals.remove(0)),
         _ => Ok(AST::Conj(goals)),
-    };
+    }
 }
 
 fn disj(
@@ -198,14 +219,14 @@ fn disj(
         }
     }
 
-    return match goals.len() {
+    match goals.len() {
         0 => Err(ParseError {
             msg: "Empty disj expression.".to_string(),
             offset: state.offset,
         }),
         1 => Ok(goals.remove(0)),
         _ => Ok(AST::Disj(goals)),
-    };
+    }
 }
 
 fn equals(
@@ -236,7 +257,18 @@ fn term(
     state: &mut ParseState,
     tokens: &mut Peekable<std::vec::IntoIter<Token>>,
 ) -> Result<AST, ParseError> {
-    atom(state, tokens)
+    if let Some(token) = tokens.peek() {
+        if token.kind == TokenKind::Tick {
+            atom(state, tokens)
+        } else {
+            variable(state, tokens)
+        }
+    } else {
+        Err(ParseError {
+            msg: "Unexpected end of input while parsing term.".to_string(),
+            offset: state.offset,
+        })
+    }
 }
 
 fn atom(
@@ -275,6 +307,123 @@ fn atom(
             msg: "Unexpected end of input while parsing atom.".to_string(),
             offset: state.offset,
         }),
+    }
+}
+
+fn var(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, ParseError> {
+    let declarations = varlist(state, tokens)?;
+    if let Some(token) = tokens.next() {
+        if token.kind == TokenKind::LeftBrace {
+            state.offset = token.offset;
+            let body = goal(state, tokens)?;
+            if let Some(token) = tokens.next() {
+                if token.kind == TokenKind::RightBrace {
+                    state.offset = token.offset;
+                    Ok(AST::Var(declarations, Box::new(body)))
+                } else {
+                    Err(ParseError {
+                        msg: "Expected `}}` while parsing var.".to_string(),
+                        offset: state.offset,
+                    })
+                }
+            } else {
+                Err(ParseError {
+                    msg: "Unexpected end of input while parsing var.".to_string(),
+                    offset: state.offset,
+                })
+            }
+        } else {
+            Err(ParseError {
+                msg: "Expected `{{` while parsing var.".to_string(),
+                offset: state.offset,
+            })
+        }
+    } else {
+        Err(ParseError {
+            msg: "Unexpected end of input while parsing var.".to_string(),
+            offset: state.offset,
+        })
+    }
+}
+
+fn varlist(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<Vec<AST>, ParseError> {
+    let mut declarations: Vec<AST> = Vec::new();
+    if let Some(token) = tokens.next() {
+        if token.kind != TokenKind::LeftParen {
+            return Err(ParseError {
+                msg: "Expected `,` or `)` while parsing variable list.".to_string(),
+                offset: state.offset,
+            });
+        }
+    } else {
+        return Err(ParseError {
+            msg: "Unexpected end of input while parsing variable list.".to_string(),
+            offset: state.offset,
+        });
+    }
+
+    while tokens.peek().is_some() {
+        declarations.push(variable(state, tokens)?);
+        if let Some(token) = tokens.peek() {
+            match token.kind {
+                TokenKind::Comma => {
+                    state.offset = token.offset;
+                    tokens.next();
+                }
+                TokenKind::RightParen => {
+                    state.offset = token.offset;
+                    tokens.next();
+                    break;
+                }
+                _ => {
+                    return Err(ParseError {
+                        msg: "Expected `,` or `)` while parsing variable list.".to_string(),
+                        offset: state.offset,
+                    });
+                }
+            }
+        } else {
+            return Err(ParseError {
+                msg: "Unexpected end of input while parsing variable list.".to_string(),
+                offset: state.offset,
+            });
+        }
+    }
+
+    match declarations.len() {
+        0 => Err(ParseError {
+            msg: "Empty variable list.".to_string(),
+            offset: state.offset,
+        }),
+        _ => Ok(declarations),
+    }
+}
+
+fn variable(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, ParseError> {
+    if let Some(token) = tokens.next() {
+        if let TokenKind::Literal(name) = token.kind {
+            state.offset = token.offset;
+            Ok(AST::Variable(name))
+        } else {
+            Err(ParseError {
+                msg: "Expected literal while parsing variable.".to_string(),
+                offset: state.offset,
+            })
+        }
+    } else {
+        Err(ParseError {
+            msg: "Unexpected end of input while parsing var.".to_string(),
+            offset: state.offset,
+        })
     }
 }
 
@@ -331,14 +480,10 @@ mod tests {
         parse!("'olive == 'olive", "'olive == 'olive");
         parse!("'0live == '0live", "'0live == '0live");
         parsefails!("'", "Unexpected end of input while parsing atom.", 0);
-        parsefails!(
-            "olive",
-            "Expected conj, disj or equals while parsing goal.",
-            0
-        );
+        parsefails!("olive", "Unexpected end of input while parsing equals.", 4);
         parsefails!(
             "'olive ==",
-            "Unexpected end of input while parsing atom.",
+            "Unexpected end of input while parsing term.",
             7
         );
         parsefails!("'olive", "Unexpected end of input while parsing equals.", 5);
@@ -371,5 +516,8 @@ mod tests {
             "Expected conj, disj or equals while parsing goal.",
             5
         );
+        parse!("var (q) { 'olive == q }", "var (q) { 'olive == q }");
+        parse!("var (q) { q == 'olive }", "var (q) { q == 'olive }");
+        parse!("var (p, q) { p == q }", "var (p, q) { p == q }");
     }
 }

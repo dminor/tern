@@ -30,10 +30,12 @@ pub fn generate(ast: &AST, vm: &mut VirtualMachine) {
             generate(right, vm);
             vm.instructions.push(Opcode::Unify);
         }
+        AST::Var(_, _) => todo!(),
         AST::Atom(s) => {
             let id = vm.intern(s);
             vm.instructions.push(Opcode::Atom(id));
         }
+        AST::Variable(_) => todo!(),
     }
 }
 
