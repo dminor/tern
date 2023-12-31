@@ -1,9 +1,8 @@
+use crate::errors::RuntimeError;
 use crate::logic;
 use crate::unification;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt;
-use std::hash::Hash;
 use std::rc::Rc;
 
 pub type AtomType = u64;
@@ -47,27 +46,40 @@ pub enum Value {
     None,
 }
 
-#[derive(Debug)]
-pub struct RuntimeError {
-    pub msg: String,
-    pub ip: usize,
-    pub opcode: Opcode,
-}
-
-impl fmt::Display for RuntimeError {
+impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ParserError: {}", self.msg)
+        match self {
+            Value::Term(term) => {
+                write!(f, "<term {:?}>", term)
+            }
+            Value::Goal(_) => {
+                write!(f, "<goal>")
+            }
+            Value::Stream(_) => write!(f, "<stream>"),
+            Value::Table(substs) => {
+                write!(f, "<substitions (")?;
+                let mut first = true;
+                for subst in substs {
+                    if !first {
+                        write!(f, ", {} = {}", subst.0, subst.0)?;
+                    } else {
+                        first = false;
+                        write!(f, "{} = {:?}", subst.0, subst.1)?;
+                    }
+                }
+                write!(f, ")>")
+            }
+            Value::None => write!(f, "<none>")
+        }
     }
 }
-
-impl Error for RuntimeError {}
 
 pub struct VirtualMachine {
     pub instructions: Vec<Opcode>,
     pub ip: usize,
 
     next_id: u64,
-    pub interned: HashMap<String, u64>,
+    pub interned: HashMap<u64, String>,
 
     pub stack: Vec<Value>,
 }
@@ -115,13 +127,13 @@ macro_rules! buildgoal {
 
 impl VirtualMachine {
     pub fn intern(&mut self, s: &String) -> u64 {
-        if let Some(id) = self.interned.get(s) {
-            *id
-        } else {
-            self.next_id += 1;
-            self.interned.insert(s.to_string(), self.next_id);
-            self.next_id
-        }
+        self.next_id += 1;
+        self.interned.insert(self.next_id, s.to_string());
+        self.next_id
+    }
+
+    pub fn lookup_interned(&mut self, id: &u64) -> Option<&String> {
+        self.interned.get(id)
     }
 
     pub fn run(&mut self) -> Result<(), RuntimeError> {

@@ -1,4 +1,5 @@
 mod codegen;
+mod errors;
 mod logic;
 mod parser;
 mod tokenizer;
