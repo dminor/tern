@@ -24,9 +24,9 @@ pub enum Opcode {
     // Pop two terms from the stack and attempt to unify them.
     // Term Term -> Unify
     Unify,
-    // Evaluate the goal to produce a stream.
+    // Solve the goal to produce a stream.
     // Goal -> Stream
-    Eval,
+    Solve,
     // Call next on the stream, pushing a table to the stack.
     // Stream -> Stream Table
     Next,
@@ -69,7 +69,7 @@ impl fmt::Display for Value {
                 }
                 write!(f, ")>")
             }
-            Value::None => write!(f, "<none>")
+            Value::None => write!(f, "<none>"),
         }
     }
 }
@@ -146,11 +146,11 @@ impl VirtualMachine {
                 Opcode::Conj2 => buildgoal!(self, Goal, Conj2),
                 Opcode::Disj2 => buildgoal!(self, Goal, Disj2),
                 Opcode::Unify => buildgoal!(self, Term, Unify),
-                Opcode::Eval => match self.stack.pop() {
+                Opcode::Solve => match self.stack.pop() {
                     Some(Value::Goal(goal)) => {
                         //TODO: eventually, we'll pop substs from the stack as well...
                         let substs = HashMap::new();
-                        self.stack.push(Value::Stream(goal.eval(&substs)));
+                        self.stack.push(Value::Stream(goal.solve(&substs)));
                     }
                     None => {
                         return Err(RuntimeError {
@@ -280,7 +280,7 @@ mod tests {
         let substs = HashMap::new();
         if let Some(vm::Value::Goal(goal)) = vm.stack.last() {
             vm.stack
-                .push(vm::Value::Stream(Box::new(goal.eval(&substs))));
+                .push(vm::Value::Stream(Box::new(goal.solve(&substs))));
         }
         vm.stack.push(vm::Value::Table(substs));
         vm.stack.push(vm::Value::None);
@@ -293,7 +293,7 @@ mod tests {
         vm.instructions.push(vm::Opcode::Atom(1));
         vm.instructions.push(vm::Opcode::Atom(1));
         vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Eval);
+        vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
@@ -306,7 +306,7 @@ mod tests {
         vm.instructions.push(vm::Opcode::Atom(1));
         vm.instructions.push(vm::Opcode::Atom(2));
         vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Eval);
+        vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         match vm.stack.last() {
@@ -318,7 +318,7 @@ mod tests {
         vm.instructions.push(vm::Opcode::Variable(1));
         vm.instructions.push(vm::Opcode::Atom(2));
         vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Eval);
+        vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
@@ -338,7 +338,7 @@ mod tests {
         vm.instructions.push(vm::Opcode::Atom(2));
         vm.instructions.push(vm::Opcode::Unify);
         vm.instructions.push(vm::Opcode::Disj2);
-        vm.instructions.push(vm::Opcode::Eval);
+        vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
@@ -358,7 +358,7 @@ mod tests {
         vm.instructions.push(vm::Opcode::Atom(2));
         vm.instructions.push(vm::Opcode::Unify);
         vm.instructions.push(vm::Opcode::Conj2);
-        vm.instructions.push(vm::Opcode::Eval);
+        vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {

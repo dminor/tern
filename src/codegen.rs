@@ -29,11 +29,17 @@ impl Context {
 
     pub fn pop(&mut self) {
         self.bindings.pop();
-        assert!(!self.bindings.is_empty(), "Internal error: empty context while doing codegen");
+        assert!(
+            !self.bindings.is_empty(),
+            "Internal error: empty context while doing codegen"
+        );
     }
 
     pub fn insert(&mut self, id: u64, value: &str) {
-        self.bindings.last_mut().unwrap().insert(value.to_string(), id);
+        self.bindings
+            .last_mut()
+            .unwrap()
+            .insert(value.to_string(), id);
     }
 }
 
@@ -95,9 +101,9 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
                 return Err(SyntaxError {
                     msg: "Expected { after conj.".to_string(),
                     offset: *offset,
-                })
+                });
             }
-        },
+        }
     }
 
     Ok(())
@@ -128,7 +134,7 @@ mod tests {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
         generate!("conj {'olive == 'olive, 'oil == 'oil }", &mut ctx, &mut vm);
-        vm.instructions.push(vm::Opcode::Eval);
+        vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         for v in &vm.stack {
@@ -145,8 +151,12 @@ mod tests {
     fn disj() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
-        generate!("disj {'olive == 'olive| 'olive == 'oil }", &mut ctx, &mut vm);
-        vm.instructions.push(vm::Opcode::Eval);
+        generate!(
+            "disj {'olive == 'olive| 'olive == 'oil }",
+            &mut ctx,
+            &mut vm
+        );
+        vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
@@ -161,7 +171,7 @@ mod tests {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
         generate!("'olive == 'olive", &mut ctx, &mut vm);
-        vm.instructions.push(vm::Opcode::Eval);
+        vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
@@ -176,7 +186,7 @@ mod tests {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
         generate!("var (q) { q == 'olive }", &mut ctx, &mut vm);
-        vm.instructions.push(vm::Opcode::Eval);
+        vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {

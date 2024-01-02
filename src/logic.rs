@@ -2,10 +2,10 @@ use crate::unification::{unify, Substitutions, Term};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-// A goal defines a single function eval() that takes substitutions as an
+// A goal defines a single function solve() that takes substitutions as an
 // argument, and produces a stream of substitutions as a result.
 pub trait Goal<T> {
-    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>>;
+    fn solve(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>>;
 }
 
 // The EqualsExpr goal produces either a singleton stream, if left and
@@ -36,7 +36,7 @@ pub struct UnifyIterator<T> {
 }
 
 impl<T: std::cmp::PartialEq + Clone + 'static> Goal<T> for Unify<T> {
-    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+    fn solve(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
         Box::new(UnifyIterator {
             forced: false,
             left: self.left.clone(),
@@ -99,10 +99,10 @@ pub struct Disj2Iterator<T> {
 }
 
 impl<T: Clone + 'static> Goal<T> for Disj2<T> {
-    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+    fn solve(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
         Box::new(Disj2Iterator {
-            left: self.left.eval(substs),
-            right: self.right.eval(substs),
+            left: self.left.solve(substs),
+            right: self.right.solve(substs),
             interleave_left: true,
             phantom: PhantomData,
         })
@@ -157,11 +157,11 @@ pub struct Conj2Iterator<T: Clone> {
 }
 
 impl<T: Clone + 'static> Goal<T> for Conj2<T> {
-    fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+    fn solve(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
         Box::new(Conj2Iterator {
             right: self.right.clone(),
             right_iterator: None,
-            left_iterator: self.left.eval(substs),
+            left_iterator: self.left.solve(substs),
             phantom: PhantomData,
         })
     }
@@ -188,7 +188,7 @@ impl<T: Clone> Iterator for Conj2Iterator<T> {
             // using the new substitutions, and call next() to use that stream of
             // substitutions. If the left iterator is empty, we're done.
             if let Some(substs) = self.left_iterator.next() {
-                self.right_iterator = Some(self.right.eval(&substs));
+                self.right_iterator = Some(self.right.solve(&substs));
                 self.next()
             } else {
                 None
@@ -212,7 +212,7 @@ mod tests {
     }
 
     impl<T: Clone + 'static> Goal<T> for Succeed {
-        fn eval(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+        fn solve(&self, substs: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
             Box::new(SucceedIterator {
                 substs: Some(substs.clone()),
             })
@@ -241,7 +241,7 @@ mod tests {
     }
 
     impl<T: 'static> Goal<T> for Fail {
-        fn eval(&self, _: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
+        fn solve(&self, _: &Substitutions<T>) -> Box<dyn Iterator<Item = Substitutions<T>>> {
             Box::new(FailureIterator {
                 phantom: PhantomData,
             })
@@ -260,7 +260,7 @@ mod tests {
     fn test_succeed() {
         let substs: HashMap<u64, Term<u32>> = HashMap::new();
         let success = Succeed {};
-        let mut iter = success.eval(&substs);
+        let mut iter = success.solve(&substs);
         assert_eq!(iter.next().unwrap(), substs);
         assert_eq!(iter.next(), None);
     }
@@ -269,7 +269,7 @@ mod tests {
     fn test_fail() {
         let substs: HashMap<u64, Term<u32>> = HashMap::new();
         let failure = Fail {};
-        let mut iter = failure.eval(&substs);
+        let mut iter = failure.solve(&substs);
         assert_eq!(iter.next(), None);
     }
 
@@ -280,21 +280,21 @@ mod tests {
             left: Term::Atom("olive".to_string()),
             right: Term::Atom("olive".to_string()),
         };
-        let mut iter = equals.eval(&substs);
+        let mut iter = equals.solve(&substs);
         assert_eq!(iter.next().unwrap(), substs);
 
         let equals = Unify {
             left: Term::Atom("olive".to_string()),
             right: Term::Atom("oil".to_string()),
         };
-        let mut iter = equals.eval(&substs);
+        let mut iter = equals.solve(&substs);
         assert_eq!(iter.next(), None);
 
         let equals = Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         };
-        let mut iter = equals.eval(&substs);
+        let mut iter = equals.solve(&substs);
         let result = iter.next().unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
@@ -305,7 +305,7 @@ mod tests {
     fn test_disj2() {
         let substs = HashMap::new();
         let disj2 = Disj2::new(Rc::new(Fail {}), Rc::new(Fail {}));
-        let mut iter = disj2.eval(&substs);
+        let mut iter = disj2.solve(&substs);
         assert_eq!(iter.next(), None);
 
         let left = Rc::new(Fail {});
@@ -314,7 +314,7 @@ mod tests {
             right: Term::Atom("oil".to_string()),
         });
         let disj2 = Disj2::new(left, right);
-        let mut iter = disj2.eval(&substs);
+        let mut iter = disj2.solve(&substs);
         let result = iter.next().unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("oil".to_string()));
@@ -326,7 +326,7 @@ mod tests {
         });
         let right = Rc::new(Fail {});
         let disj2 = Disj2::new(left, right);
-        let mut iter = disj2.eval(&substs);
+        let mut iter = disj2.solve(&substs);
         let result = iter.next().unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
@@ -341,7 +341,7 @@ mod tests {
             right: Term::Atom("oil".to_string()),
         });
         let disj2 = Disj2::new(left, right);
-        let mut iter = disj2.eval(&substs);
+        let mut iter = disj2.solve(&substs);
         let result = iter.next().unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
@@ -355,7 +355,7 @@ mod tests {
     fn test_conj2() {
         let substs = HashMap::new();
         let conj2 = Conj2::new(Rc::new(Fail {}), Rc::new(Fail {}));
-        let mut iter = conj2.eval(&substs);
+        let mut iter = conj2.solve(&substs);
         assert_eq!(iter.next(), None);
 
         let left = Rc::new(Fail {});
@@ -364,7 +364,7 @@ mod tests {
             right: Term::Atom("oil".to_string()),
         });
         let conj2 = Conj2::new(left, right);
-        let mut iter = conj2.eval(&substs);
+        let mut iter = conj2.solve(&substs);
         assert_eq!(iter.next(), None);
 
         let left = Rc::new(Unify {
@@ -373,7 +373,7 @@ mod tests {
         });
         let right = Rc::new(Fail {});
         let conj2 = Conj2::new(left, right);
-        let mut iter = conj2.eval(&substs);
+        let mut iter = conj2.solve(&substs);
         assert_eq!(iter.next(), None);
 
         let left = Rc::new(Unify {
@@ -385,7 +385,7 @@ mod tests {
             right: Term::Atom("oil".to_string()),
         });
         let conj2 = Conj2::new(left, right);
-        let mut iter = conj2.eval(&substs);
+        let mut iter = conj2.solve(&substs);
         assert_eq!(iter.next(), None);
 
         let left = Rc::new(Unify {
@@ -397,7 +397,7 @@ mod tests {
             right: Term::Atom("olive".to_string()),
         });
         let conj2 = Conj2::new(left, right);
-        let mut iter = conj2.eval(&substs);
+        let mut iter = conj2.solve(&substs);
         let result = iter.next().unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
@@ -412,7 +412,7 @@ mod tests {
             right: Term::Atom("oil".to_string()),
         });
         let conj2 = Conj2::new(left, right);
-        let mut iter = conj2.eval(&substs);
+        let mut iter = conj2.solve(&substs);
         let result = iter.next().unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
@@ -440,7 +440,7 @@ mod tests {
             }),
         ));
         let disj2 = Disj2::new(left, right);
-        let mut iter = disj2.eval(&substs);
+        let mut iter = disj2.solve(&substs);
         let result = iter.next().unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(*result.get(&1).unwrap(), Term::Atom("split".to_string()));
