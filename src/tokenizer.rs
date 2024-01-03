@@ -1,4 +1,4 @@
-use std::error::Error;
+use crate::errors::TokenizerError;
 use std::fmt;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -52,20 +52,6 @@ pub struct Token {
     pub offset: usize,
 }
 
-#[derive(Debug)]
-pub struct TokenizerError {
-    pub err: String,
-    pub offset: usize,
-}
-
-impl fmt::Display for TokenizerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TokenizerError: {}", self.err)
-    }
-}
-
-impl Error for TokenizerError {}
-
 pub fn scan(src: &str) -> Result<Vec<Token>, TokenizerError> {
     let mut offset = 0;
     let mut tokens = Vec::<Token>::new();
@@ -90,7 +76,7 @@ pub fn scan(src: &str) -> Result<Vec<Token>, TokenizerError> {
                     offset += 1;
                 } else {
                     return Err(TokenizerError {
-                        err: "Unexpected token while scanning `==`".to_string(),
+                        msg: "Unexpected token while scanning `==`".to_string(),
                         offset: offset + 1,
                     });
                 }
@@ -195,7 +181,7 @@ mod tests {
             match scan($input) {
                 Ok(_) => assert!(false),
                 Err(e) => {
-                    assert_eq!(e.err, $err);
+                    assert_eq!(e.msg, $err);
                     assert_eq!(e.offset, $offset);
                 }
             }

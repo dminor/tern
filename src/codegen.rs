@@ -119,9 +119,10 @@ mod tests {
         ($input:expr, $ctx: expr, $vm:expr) => {{
             match tokenizer::scan($input) {
                 Ok(tokens) => match parser::parse(tokens) {
-                    Ok(ast) => {
-                        codegen::generate(&ast, $ctx, $vm);
-                    }
+                    Ok(ast) => match codegen::generate(&ast, $ctx, $vm) {
+                        Ok(()) => {}
+                        Err(err) => assert_eq!("code generation failed", err.msg),
+                    },
                     Err(err) => assert_eq!("parse failed", err.msg),
                 },
                 _ => assert!(false),

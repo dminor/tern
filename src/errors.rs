@@ -31,6 +31,16 @@ impl fmt::Display for SyntaxError {
 
 impl Error for SyntaxError {}
 
-struct SyntaxState {
-    offset: usize,
+#[derive(Debug)]
+pub struct TokenizerError {
+    pub msg: String,
+    pub offset: usize,
 }
+
+impl fmt::Display for TokenizerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "TokenizerError: {}", self.msg)
+    }
+}
+
+impl Error for TokenizerError {}
