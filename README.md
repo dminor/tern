@@ -1,9 +1,9 @@
-Mirlo
------
-Mirlo is a logic programming language.
+Tern
+----
+Tern is a logic programming language.
 
 It is the fourth in a series of little languages I've worked on. The core ideas that I'm interested
-in exploring in Mirlo are logic programming, generators/streams and how pattern matching can work
+in exploring in Tern are logic programming, generators/streams and how pattern matching can work
 in a dynamically typed language.
 
 Reserved Keywords

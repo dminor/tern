@@ -109,7 +109,7 @@ fn main() -> io::Result<()> {
 
     let stdin = io::stdin();
     let mut stdout = io::stdout();
-    println!("Welcome to Mirlo!");
+    println!("Welcome to Tern!");
     print!("> ");
     stdout.flush()?;
 
