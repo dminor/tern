@@ -1,0 +1,10 @@
+conj {
+    'apple == 'apple,
+    var (x) {x == 'apple},
+    disj {
+        var (y) {
+            y == 'orange
+        } |
+        'apple == 'orange
+    }
+}

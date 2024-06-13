@@ -50,7 +50,26 @@ fn eval(filename: &str, src: &str, ctx: &mut codegen::Context, vm: &mut vm::Virt
                                 if substs.is_empty() {
                                     println!("Ok.");
                                 } else {
-                                    println!("{:?}", substs);
+                                    for subst in substs {
+                                        if let Some(interned) = vm.lookup_interned(&subst.0) {
+                                            print!("{}: ", interned);
+                                        } else {
+                                            print!("{}: ", subst.0);
+                                        }
+                                        match subst.1 {
+                                            unification::Term::Atom(a)
+                                            | unification::Term::Variable(a) => {
+                                                if let Some(interned) = vm.lookup_interned(&a) {
+                                                    println!("{}", interned);
+                                                } else {
+                                                    println!("{}", a);
+                                                }
+                                            }
+                                            _ => {
+                                                println!("{:?}", subst.1);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             Some(vm::Value::None) => {
@@ -105,6 +124,11 @@ fn main() -> io::Result<()> {
         let mut program = String::new();
         file.read_to_string(&mut program)?;
         eval(&filename, &program, &mut ctx, &mut vm);
+    }
+
+    // Not running interactively.
+    if args.len() > 1 {
+        return Ok(());
     }
 
     let stdin = io::stdin();
