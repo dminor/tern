@@ -283,5 +283,16 @@ mod tests {
             TokenKind::Literal("q".to_string()),
             TokenKind::RightBrace
         );
+        scan!(
+            "fn('olive == 'olive)",
+            TokenKind::Literal("fn".to_string()),
+            TokenKind::LeftParen,
+            TokenKind::Tick,
+            TokenKind::Literal("olive".to_string()),
+            TokenKind::DoubleEquals,
+            TokenKind::Tick,
+            TokenKind::Literal("olive".to_string()),
+            TokenKind::RightParen
+        );
     }
 }

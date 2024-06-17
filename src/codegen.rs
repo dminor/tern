@@ -98,8 +98,26 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
             if let Some(id) = ctx.lookup(v) {
                 vm.instructions.push(Opcode::Variable(id));
             } else {
+                let msg = "Undefined variable: ".to_string() + v;
                 return Err(SyntaxError {
-                    msg: "Expected { after conj.".to_string(),
+                    msg,
+                    offset: *offset,
+                });
+            }
+        }
+        AST::FnCall(name, args, offset) => {
+            for arg in args {
+                generate(arg, ctx, vm)?;
+            }
+            // So far, we just have two builtin functions...
+            if name == "solve" {
+                vm.instructions.push(Opcode::Solve);
+            } else if name == "next" {
+                vm.instructions.push(Opcode::Next);
+            } else {
+                let msg = "Undefined function: ".to_string() + name;
+                return Err(SyntaxError {
+                    msg,
                     offset: *offset,
                 });
             }
@@ -189,6 +207,22 @@ mod tests {
         generate!("var (q) { q == 'olive }", &mut ctx, &mut vm);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
+        assert!(vm.run().is_ok());
+        if let Some(vm::Value::Table(substs)) = vm.stack.last() {
+            assert_eq!(substs.len(), 1);
+            assert_eq!(substs.get(&1).unwrap(), &Term::Atom(2));
+            assert_eq!(vm.lookup_interned(&1).unwrap(), "q");
+            assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn fncall() {
+        let mut ctx = codegen::Context::new();
+        let mut vm = vm::VirtualMachine::new();
+        generate!("next(solve(var (q) { q == 'olive }))", &mut ctx, &mut vm);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);

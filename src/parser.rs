@@ -10,6 +10,7 @@ pub enum AST {
     Var(Vec<AST>, Box<AST>),
     Atom(String),
     Variable(String, usize),
+    FnCall(String, Vec<AST>, usize),
 }
 
 impl fmt::Display for AST {
@@ -57,12 +58,48 @@ impl fmt::Display for AST {
             }
             AST::Atom(atom) => write!(f, "'{}", atom),
             AST::Variable(name, _) => write!(f, "{}", name),
+            AST::FnCall(name, arguments, _) => {
+                write!(f, "{}(", name)?;
+                let mut first = true;
+                for argument in arguments {
+                    if !first {
+                        write!(f, ", {}", argument)?;
+                    } else {
+                        first = false;
+                        write!(f, "{}", argument)?;
+                    }
+                }
+                write!(f, ")")
+            }
         }
     }
 }
 
 struct ParseState {
     offset: usize,
+}
+
+fn fncall(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, SyntaxError> {
+    if let Some(token) = tokens.peek() {
+        if let TokenKind::Literal(name) = &token.kind {
+            let name = name.to_string();
+            let offset = token.offset;
+            state.offset = token.offset;
+            tokens.next();
+            let arglist = arglist(state, tokens)?;
+            Ok(AST::FnCall(name, arglist, offset))
+        } else {
+            goal(state, tokens)
+        }
+    } else {
+        Err(SyntaxError {
+            msg: "Unexpected end of input while parsing.".to_string(),
+            offset: state.offset,
+        })
+    }
 }
 
 fn goal(
@@ -118,7 +155,7 @@ fn goal(
                 var(state, tokens)
             }
             _ => Err(SyntaxError {
-                msg: "Expected conj, disj or equals while parsing goal.".to_string(),
+                msg: "Expected conj, disj, equals or var while parsing goal.".to_string(),
                 offset: state.offset,
             }),
         }
@@ -335,6 +372,70 @@ fn var(
     }
 }
 
+fn arglist(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<Vec<AST>, SyntaxError> {
+    let mut arguments: Vec<AST> = Vec::new();
+    if let Some(token) = tokens.next() {
+        if token.kind != TokenKind::LeftParen {
+            return Err(SyntaxError {
+                msg: "Expected `,` or `)` while parsing argument list.".to_string(),
+                offset: state.offset,
+            });
+        }
+    } else {
+        return Err(SyntaxError {
+            msg: "Unexpected end of input while parsing argument list.".to_string(),
+            offset: state.offset,
+        });
+    }
+
+    // Allow for no arguments
+    if let Some(token) = tokens.peek() {
+        if token.kind == TokenKind::RightParen {
+            state.offset = token.offset;
+            tokens.next();
+            return Ok(arguments);
+        }
+    } else {
+        return Err(SyntaxError {
+            msg: "Unexpected end of input while parsing argument list.".to_string(),
+            offset: state.offset,
+        });
+    }
+
+    while tokens.peek().is_some() {
+        arguments.push(fncall(state, tokens)?);
+        if let Some(token) = tokens.peek() {
+            match token.kind {
+                TokenKind::Comma => {
+                    state.offset = token.offset;
+                    tokens.next();
+                }
+                TokenKind::RightParen => {
+                    state.offset = token.offset;
+                    tokens.next();
+                    break;
+                }
+                _ => {
+                    return Err(SyntaxError {
+                        msg: "Expected `,` or `)` while parsing argument list.".to_string(),
+                        offset: state.offset,
+                    });
+                }
+            }
+        } else {
+            return Err(SyntaxError {
+                msg: "Unexpected end of input while parsing argument list.".to_string(),
+                offset: state.offset,
+            });
+        }
+    }
+
+    Ok(arguments)
+}
+
 fn varlist(
     state: &mut ParseState,
     tokens: &mut Peekable<std::vec::IntoIter<Token>>,
@@ -416,7 +517,7 @@ fn variable(
 pub fn parse(tokens: Vec<Token>) -> Result<AST, SyntaxError> {
     let mut state = ParseState { offset: 0 };
     let mut iter = tokens.into_iter().peekable();
-    let ast = goal(&mut state, &mut iter);
+    let ast = fncall(&mut state, &mut iter);
     if iter.next().is_none() || ast.is_err() {
         ast
     } else {
@@ -466,7 +567,11 @@ mod tests {
         parse!("'olive == 'olive", "'olive == 'olive");
         parse!("'0live == '0live", "'0live == '0live");
         parsefails!("'", "Unexpected end of input while parsing atom.", 0);
-        parsefails!("olive", "Unexpected end of input while parsing equals.", 4);
+        parsefails!(
+            "olive",
+            "Unexpected end of input while parsing argument list.",
+            4
+        );
         parsefails!(
             "'olive ==",
             "Unexpected end of input while parsing term.",
@@ -494,16 +599,24 @@ mod tests {
         parse!("disj { 'red == 'red  }", "'red == 'red");
         parsefails!(
             "conj {}",
-            "Expected conj, disj or equals while parsing goal.",
+            "Expected conj, disj, equals or var while parsing goal.",
             5
         );
         parsefails!(
             "disj {}",
-            "Expected conj, disj or equals while parsing goal.",
+            "Expected conj, disj, equals or var while parsing goal.",
             5
         );
         parse!("var (q) { 'olive == q }", "var (q) { 'olive == q }");
         parse!("var (q) { q == 'olive }", "var (q) { q == 'olive }");
         parse!("var (p, q) { p == q }", "var (p, q) { p == q }");
+        parse!("fn()", "fn()");
+        parse!("fn('olive == 'olive)", "fn('olive == 'olive)");
+        parse!("fn(var (p, q) { p == q })", "fn(var (p, q) { p == q })");
+        parsefails!(
+            "fn(var (p, q) { p == q }",
+            "Unexpected end of input while parsing argument list.",
+            23
+        );
     }
 }

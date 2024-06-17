@@ -13,8 +13,8 @@ The following keywords are reserved: `conj`, `disj` and `var`.
 Syntax
 ------
 
+    fncall   -> goal | goal "." fnname "(" ((fncall ",")* fncall)? ")"
     goal     -> disj | conj | var | equals
-    relation -> relname varlist
     disj     -> "disj" "{" (goal "|")* goal "}"
     conj     -> "conj" "{" (goal ",")* goal "}"
     var      -> var varlist "{" goal "}"
@@ -23,7 +23,7 @@ Syntax
     atom     -> "'"[A-Za-z0-9]+
     varlist  -> "(" (variable ",")* variable ")"
     variable -> [a-z][A-Za-z0-9]*
-    relname  -> [A-Z][A-Za-z0-9]*
+    fnname  -> [A-Z][A-Za-z0-9]*
 
 Annotated Bibliography
 ----------------------
