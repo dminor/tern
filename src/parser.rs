@@ -11,6 +11,7 @@ pub enum AST {
     Atom(String),
     Variable(String, usize),
     FnCall(String, Vec<AST>, usize),
+    Program(Vec<AST>),
 }
 
 impl fmt::Display for AST {
@@ -71,12 +72,29 @@ impl fmt::Display for AST {
                 }
                 write!(f, ")")
             }
+            AST::Program(statements) => {
+                for statement in statements {
+                    write!(f, "{}", statement)?;
+                }
+                Ok(())
+            }
         }
     }
 }
 
 struct ParseState {
     offset: usize,
+}
+
+fn program(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, SyntaxError> {
+    let mut statements: Vec<AST> = Vec::new();
+    while tokens.peek().is_some() {
+        statements.push(statement(state, tokens)?);
+    }
+    Ok(AST::Program(statements))
 }
 
 fn statement(
@@ -524,7 +542,7 @@ fn variable(
 pub fn parse(tokens: Vec<Token>) -> Result<AST, SyntaxError> {
     let mut state = ParseState { offset: 0 };
     let mut iter = tokens.into_iter().peekable();
-    let ast = statement(&mut state, &mut iter);
+    let ast = program(&mut state, &mut iter);
     if iter.next().is_none() || ast.is_err() {
         ast
     } else {
