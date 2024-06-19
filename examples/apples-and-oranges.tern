@@ -1,3 +1,4 @@
+# A nonsensical example of what's supported in the language.
 next(solve(conj {
     'apple == 'apple,
     var (x) {x == 'apple},

@@ -113,6 +113,14 @@ pub fn scan(src: &str) -> Result<Vec<Token>, TokenizerError> {
                 kind: TokenKind::Tick,
                 offset,
             }),
+            '#' => {
+                while let Some(c) = chars.next() {
+                    offset += 1;
+                    if c == '\n' {
+                        break;
+                    }
+                }
+            }
             '\n' | ' ' => {}
             _ => {
                 let mut v = vec![c];
@@ -196,27 +204,12 @@ mod tests {
             TokenKind::Literal("olive".to_string())
         );
         scan!(
-            "'olive 'oil",
-            TokenKind::Tick,
-            TokenKind::Literal("olive".to_string()),
-            TokenKind::Tick,
-            TokenKind::Literal("oil".to_string())
-        );
-        scan!(
-            "'olive == 'oil({}).next()",
+            "'olive == 'oil",
             TokenKind::Tick,
             TokenKind::Literal("olive".to_string()),
             TokenKind::DoubleEquals,
             TokenKind::Tick,
-            TokenKind::Literal("oil".to_string()),
-            TokenKind::LeftParen,
-            TokenKind::LeftBrace,
-            TokenKind::RightBrace,
-            TokenKind::RightParen,
-            TokenKind::Dot,
-            TokenKind::Literal("next".to_string()),
-            TokenKind::LeftParen,
-            TokenKind::RightParen
+            TokenKind::Literal("oil".to_string())
         );
         scan!(
             "['olive, 'oil] == ['olive, q]",
@@ -293,6 +286,36 @@ mod tests {
             TokenKind::Tick,
             TokenKind::Literal("olive".to_string()),
             TokenKind::RightParen
+        );
+        scan!(
+            "# This is a comment\ndisj { p == 'red | p == 'bean }",
+            TokenKind::Disj,
+            TokenKind::LeftBrace,
+            TokenKind::Literal("p".to_string()),
+            TokenKind::DoubleEquals,
+            TokenKind::Tick,
+            TokenKind::Literal("red".to_string()),
+            TokenKind::Pipe,
+            TokenKind::Literal("p".to_string()),
+            TokenKind::DoubleEquals,
+            TokenKind::Tick,
+            TokenKind::Literal("bean".to_string()),
+            TokenKind::RightBrace
+        );
+        scan!(
+            "# This is a comment\n# This is also a comment\ndisj { p == 'red | p == 'bean }",
+            TokenKind::Disj,
+            TokenKind::LeftBrace,
+            TokenKind::Literal("p".to_string()),
+            TokenKind::DoubleEquals,
+            TokenKind::Tick,
+            TokenKind::Literal("red".to_string()),
+            TokenKind::Pipe,
+            TokenKind::Literal("p".to_string()),
+            TokenKind::DoubleEquals,
+            TokenKind::Tick,
+            TokenKind::Literal("bean".to_string()),
+            TokenKind::RightBrace
         );
     }
 }
