@@ -12,20 +12,22 @@ The following keywords are reserved: `conj`, `disj` and `var`.
 
 Syntax
 ------
-    statement -> comment | fncall | let
-    let       -> "let" variable "=" fncall
-    comment   -> "#" .* "\n"
-    fncall    -> goal | fnname "(" ((fncall ",")* fncall)? ")"
-    goal      -> disj | conj | var | equals
-    disj      -> "disj" "{" (goal "|")* goal "}"
-    conj      -> "conj" "{" (goal ",")* goal "}"
-    var       -> var varlist "{" goal "}"
-    equals    -> term "==" term
-    term      -> atom | variable
-    atom      -> "'"[A-Za-z0-9]+
-    varlist   -> "(" (variable ",")* variable ")"
-    variable  -> [a-z][A-Za-z0-9]*
-    fnname    -> [A-Z][A-Za-z0-9]*
+    statement  -> comment | expression
+    expression -> fncall | goal | table
+    let        -> "let" variable "=" fncall
+    comment    -> "#" .* "\n"
+    table      -> "{" (term ":" term "," )* "}"
+    fncall     -> fnname "(" ((fncall ",")* fncall)? ")"
+    goal       -> disj | conj | var | equals
+    disj       -> "disj" "{" (goal "|")* goal "}"
+    conj       -> "conj" "{" (goal ",")* goal "}"
+    var        -> var varlist "{" goal "}"
+    equals     -> term "==" term
+    term       -> atom | variable
+    atom       -> "'"[A-Za-z0-9]+
+    varlist    -> "(" (variable ",")* variable ")"
+    variable   -> [a-z][A-Za-z0-9]*
+    fnname     -> [A-Z][A-Za-z0-9]*
 
 Annotated Bibliography
 ----------------------

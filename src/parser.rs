@@ -79,7 +79,14 @@ struct ParseState {
     offset: usize,
 }
 
-fn fncall(
+fn statement(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, SyntaxError> {
+    expression(state, tokens)
+}
+
+fn expression(
     state: &mut ParseState,
     tokens: &mut Peekable<std::vec::IntoIter<Token>>,
 ) -> Result<AST, SyntaxError> {
@@ -406,7 +413,7 @@ fn arglist(
     }
 
     while tokens.peek().is_some() {
-        arguments.push(fncall(state, tokens)?);
+        arguments.push(expression(state, tokens)?);
         if let Some(token) = tokens.peek() {
             match token.kind {
                 TokenKind::Comma => {
@@ -517,7 +524,7 @@ fn variable(
 pub fn parse(tokens: Vec<Token>) -> Result<AST, SyntaxError> {
     let mut state = ParseState { offset: 0 };
     let mut iter = tokens.into_iter().peekable();
-    let ast = fncall(&mut state, &mut iter);
+    let ast = statement(&mut state, &mut iter);
     if iter.next().is_none() || ast.is_err() {
         ast
     } else {
