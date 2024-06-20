@@ -127,6 +127,7 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
                 generate(statement, ctx, vm)?;
             }
         }
+        AST::Table(members) => todo!("unimplemented"),
     }
 
     Ok(())

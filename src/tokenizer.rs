@@ -4,6 +4,7 @@ use std::fmt;
 #[derive(Debug, Eq, PartialEq)]
 pub enum TokenKind {
     //Symbols
+    Colon,
     Comma,
     Dot,
     DoubleEquals,
@@ -28,6 +29,7 @@ pub enum TokenKind {
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            TokenKind::Colon => write!(f, ":"),
             TokenKind::Comma => write!(f, ","),
             TokenKind::DoubleEquals => write!(f, "=="),
             TokenKind::Dot => write!(f, "."),
@@ -58,6 +60,10 @@ pub fn scan(src: &str) -> Result<Vec<Token>, TokenizerError> {
     let mut chars = src.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
+            ':' => tokens.push(Token {
+                kind: TokenKind::Colon,
+                offset,
+            }),
             ',' => tokens.push(Token {
                 kind: TokenKind::Comma,
                 offset,
@@ -315,6 +321,32 @@ mod tests {
             TokenKind::DoubleEquals,
             TokenKind::Tick,
             TokenKind::Literal("bean".to_string()),
+            TokenKind::RightBrace
+        );
+        scan!("{}", TokenKind::LeftBrace, TokenKind::RightBrace);
+        scan!(
+            "{'olive: 'oil}",
+            TokenKind::LeftBrace,
+            TokenKind::Tick,
+            TokenKind::Literal("olive".to_string()),
+            TokenKind::Colon,
+            TokenKind::Tick,
+            TokenKind::Literal("oil".to_string()),
+            TokenKind::RightBrace
+        );
+        scan!(
+            "{'olive: 'oil, x: 'olive}",
+            TokenKind::LeftBrace,
+            TokenKind::Tick,
+            TokenKind::Literal("olive".to_string()),
+            TokenKind::Colon,
+            TokenKind::Tick,
+            TokenKind::Literal("oil".to_string()),
+            TokenKind::Comma,
+            TokenKind::Literal("x".to_string()),
+            TokenKind::Colon,
+            TokenKind::Tick,
+            TokenKind::Literal("olive".to_string()),
             TokenKind::RightBrace
         );
     }

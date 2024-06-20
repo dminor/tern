@@ -17,7 +17,7 @@ Syntax
     let        -> "let" variable "=" fncall
     comment    -> "#" .* "\n"
     table      -> "{" (term ":" term "," )* "}"
-    fncall     -> fnname "(" ((fncall ",")* fncall)? ")"
+    fncall     -> fnname "(" ((expression ",")* expression)? ")"
     goal       -> disj | conj | var | equals
     disj       -> "disj" "{" (goal "|")* goal "}"
     conj       -> "conj" "{" (goal ",")* goal "}"

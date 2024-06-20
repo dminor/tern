@@ -12,6 +12,7 @@ pub enum AST {
     Variable(String, usize),
     FnCall(String, Vec<AST>, usize),
     Program(Vec<AST>),
+    Table(Vec<AST>),
 }
 
 impl fmt::Display for AST {
@@ -78,6 +79,21 @@ impl fmt::Display for AST {
                 }
                 Ok(())
             }
+            AST::Table(members) => {
+                write!(f, "{{")?;
+                let mut i = 0;
+                while i < members.len() {
+                    write!(f, "{}", members[i])?;
+                    write!(f, ": ")?;
+                    if i + 2 != members.len() {
+                        write!(f, "{}, ", members[i + 1])?;
+                    } else {
+                        write!(f, "{}", members[i + 1])?;
+                    }
+                    i += 2;
+                }
+                write!(f, "}}")
+            }
         }
     }
 }
@@ -109,19 +125,81 @@ fn expression(
     tokens: &mut Peekable<std::vec::IntoIter<Token>>,
 ) -> Result<AST, SyntaxError> {
     if let Some(token) = tokens.peek() {
-        if let TokenKind::Literal(name) = &token.kind {
-            let name = name.to_string();
-            let offset = token.offset;
-            state.offset = token.offset;
-            tokens.next();
-            let arglist = arglist(state, tokens)?;
-            Ok(AST::FnCall(name, arglist, offset))
-        } else {
-            goal(state, tokens)
+        match &token.kind {
+            TokenKind::LeftBrace => table(state, tokens),
+            TokenKind::Literal(name) => {
+                let name = name.to_string();
+                let offset = token.offset;
+                state.offset = token.offset;
+                tokens.next();
+                let arglist = arglist(state, tokens)?;
+                Ok(AST::FnCall(name, arglist, offset))
+            }
+            _ => goal(state, tokens),
         }
     } else {
         Err(SyntaxError {
             msg: "Unexpected end of input while parsing.".to_string(),
+            offset: state.offset,
+        })
+    }
+}
+
+fn table(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, SyntaxError> {
+    if let Some(token) = tokens.next() {
+        if token.kind != TokenKind::LeftBrace {
+            return Err(SyntaxError {
+                msg: "Unexpected end of input while parsing.".to_string(),
+                offset: state.offset,
+            });
+        }
+        state.offset = token.offset;
+        let mut members: Vec<AST> = Vec::new();
+        loop {
+            if let Some(token) = tokens.peek() {
+                if token.kind == TokenKind::RightBrace {
+                    state.offset = token.offset;
+                    tokens.next();
+                    break;
+                }
+            }
+            members.push(term(state, tokens)?);
+            if let Some(token) = tokens.next() {
+                if token.kind != TokenKind::Colon {
+                    return Err(SyntaxError {
+                        msg: "Expected `:` while parsing table.".to_string(),
+                        offset: state.offset,
+                    });
+                }
+                state.offset = token.offset;
+            }
+            members.push(term(state, tokens)?);
+            if let Some(token) = tokens.next() {
+                if token.kind == TokenKind::Comma {
+                    state.offset = token.offset;
+                } else if token.kind == TokenKind::RightBrace {
+                    state.offset = token.offset;
+                    break;
+                } else {
+                    return Err(SyntaxError {
+                        msg: "Expected `,` or `}` while parsing table.".to_string(),
+                        offset: state.offset,
+                    });
+                }
+            } else {
+                return Err(SyntaxError {
+                    msg: "Unexpected end of input while parsing table.".to_string(),
+                    offset: state.offset,
+                });
+            }
+        }
+        Ok(AST::Table(members))
+    } else {
+        Err(SyntaxError {
+            msg: "Unexpected end of input while parsing table.".to_string(),
             offset: state.offset,
         })
     }
@@ -641,6 +719,20 @@ mod tests {
         parsefails!(
             "fn(var (p, q) { p == q }",
             "Unexpected end of input while parsing argument list.",
+            23
+        );
+        parse!("{}", "{}");
+        parse!("{x: 'olive}", "{x: 'olive}");
+        parse!("{x: 'olive, 'olive: 'oil}", "{x: 'olive, 'olive: 'oil}");
+        parsefails!("{x 'olive}", "Expected `:` while parsing table.", 1);
+        parsefails!(
+            "{x: 'olive 'olive: 'oil}",
+            "Expected `,` or `}` while parsing table.",
+            9
+        );
+        parsefails!(
+            "{x: 'olive, 'olive: 'oil",
+            "Unexpected end of input while parsing table.",
             23
         );
     }

@@ -57,14 +57,14 @@ impl fmt::Display for Value {
             }
             Value::Stream(_) => write!(f, "<stream>"),
             Value::Table(substs) => {
-                write!(f, "<substitions (")?;
+                write!(f, "<table (")?;
                 let mut first = true;
                 for subst in substs {
                     if !first {
-                        write!(f, ", {} = {}", subst.0, subst.0)?;
+                        write!(f, ", {}: {:?}", subst.0, subst.1)?;
                     } else {
                         first = false;
-                        write!(f, "{} = {:?}", subst.0, subst.1)?;
+                        write!(f, "{}: {:?}", subst.0, subst.1)?;
                     }
                 }
                 write!(f, ")>")
