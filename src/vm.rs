@@ -36,13 +36,22 @@ pub enum Opcode {
     // Print the value from the top of the stack to stdout (for debugging).
     // Value -> Value
     Print,
+    // Create a new table and push it to the stack.
+    // -> Table
+    NewTable,
+    // Set the field in the table with `key` to `value`.
+    // Table key value -> Table
+    SetTable,
+    // Get the field in the table with `key`. Pushes `None` for missing keys.
+    // Table key -> Table value
+    GetTable,
 }
 
 pub enum Value {
     Term(unification::Term<AtomType>),
     Goal(Rc<dyn logic::Goal<AtomType>>),
     Stream(Box<dyn Iterator<Item = unification::Substitutions<AtomType>>>),
-    Table(unification::Substitutions<AtomType>),
+    Table(HashMap<unification::Term<AtomType>, unification::Term<AtomType>>),
     None,
 }
 
@@ -56,15 +65,15 @@ impl fmt::Display for Value {
                 write!(f, "<goal>")
             }
             Value::Stream(_) => write!(f, "<stream>"),
-            Value::Table(substs) => {
+            Value::Table(values) => {
                 write!(f, "<table (")?;
                 let mut first = true;
-                for subst in substs {
+                for value in values {
                     if !first {
-                        write!(f, ", {}: {:?}", subst.0, subst.1)?;
+                        write!(f, ", {:?}: {:?}", value.0, value.1)?;
                     } else {
                         first = false;
-                        write!(f, "{}: {:?}", subst.0, subst.1)?;
+                        write!(f, "{:?}: {:?}", value.0, value.1)?;
                     }
                 }
                 write!(f, ")>")
@@ -169,7 +178,13 @@ impl VirtualMachine {
                 },
                 Opcode::Next => match self.stack.pop() {
                     Some(Value::Stream(mut stream)) => match stream.next() {
-                        Some(substs) => self.stack.push(Value::Table(substs)),
+                        Some(substs) => {
+                            let mut table = HashMap::new();
+                            for subst in substs {
+                                table.insert(unification::Term::Variable(subst.0), subst.1);
+                            }
+                            self.stack.push(Value::Table(table));
+                        }
                         None => self.stack.push(Value::None),
                     },
                     None => {
@@ -218,6 +233,104 @@ impl VirtualMachine {
                         });
                     }
                 },
+                Opcode::NewTable => {
+                    let table = HashMap::new();
+                    self.stack.push(Value::Table(table));
+                }
+                Opcode::SetTable => {
+                    let value = if let Some(value) = self.stack.pop() {
+                        if let Value::Term(term) = value {
+                            term
+                        } else {
+                            return Err(RuntimeError {
+                                msg: "TypeError: Expected term.".to_string(),
+                                ip: self.ip,
+                                opcode: self.instructions[self.ip].clone(),
+                            });
+                        }
+                    } else {
+                        return Err(RuntimeError {
+                            msg: "Stack underflow.".to_string(),
+                            ip: self.ip,
+                            opcode: self.instructions[self.ip].clone(),
+                        });
+                    };
+                    let key = if let Some(value) = self.stack.pop() {
+                        if let Value::Term(term) = value {
+                            term
+                        } else {
+                            return Err(RuntimeError {
+                                msg: "TypeError: Expected term.".to_string(),
+                                ip: self.ip,
+                                opcode: self.instructions[self.ip].clone(),
+                            });
+                        }
+                    } else {
+                        return Err(RuntimeError {
+                            msg: "Stack underflow.".to_string(),
+                            ip: self.ip,
+                            opcode: self.instructions[self.ip].clone(),
+                        });
+                    };
+                    if let Some(table) = self.stack.last_mut() {
+                        if let Value::Table(table) = table {
+                            table.insert(key, value);
+                        } else {
+                            return Err(RuntimeError {
+                                msg: "TypeError: Expected table.".to_string(),
+                                ip: self.ip,
+                                opcode: self.instructions[self.ip].clone(),
+                            });
+                        }
+                    } else {
+                        return Err(RuntimeError {
+                            msg: "Stack underflow.".to_string(),
+                            ip: self.ip,
+                            opcode: self.instructions[self.ip].clone(),
+                        });
+                    };
+                }
+                Opcode::GetTable => {
+                    let key = if let Some(value) = self.stack.pop() {
+                        if let Value::Term(term) = value {
+                            term
+                        } else {
+                            return Err(RuntimeError {
+                                msg: "TypeError: Expected term.".to_string(),
+                                ip: self.ip,
+                                opcode: self.instructions[self.ip].clone(),
+                            });
+                        }
+                    } else {
+                        return Err(RuntimeError {
+                            msg: "Stack underflow.".to_string(),
+                            ip: self.ip,
+                            opcode: self.instructions[self.ip].clone(),
+                        });
+                    };
+                    if let Some(table) = self.stack.last_mut() {
+                        if let Value::Table(table) = table {
+                            if let Some(term) = table.get(&key) {
+                                let term = term.clone();
+                                self.stack.push(Value::Term(term));
+                            } else {
+                                self.stack.push(Value::None);
+                            }
+                        } else {
+                            return Err(RuntimeError {
+                                msg: "TypeError: Expected table.".to_string(),
+                                ip: self.ip,
+                                opcode: self.instructions[self.ip].clone(),
+                            });
+                        }
+                    } else {
+                        return Err(RuntimeError {
+                            msg: "Stack underflow.".to_string(),
+                            ip: self.ip,
+                            opcode: self.instructions[self.ip].clone(),
+                        });
+                    };
+                }
             }
             self.ip += 1;
         }
@@ -282,7 +395,8 @@ mod tests {
             vm.stack
                 .push(vm::Value::Stream(Box::new(goal.solve(&substs))));
         }
-        vm.stack.push(vm::Value::Table(substs));
+        let table = HashMap::new();
+        vm.stack.push(vm::Value::Table(table));
         vm.stack.push(vm::Value::None);
         assert_eq!(vm.stack.len(), 8);
     }
@@ -322,7 +436,10 @@ mod tests {
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
-            assert_eq!(substs.get(&1).unwrap(), &unification::Term::Atom(2));
+            assert_eq!(
+                substs.get(&unification::Term::Variable(1)).unwrap(),
+                &unification::Term::Atom(2)
+            );
         } else {
             assert!(false);
         }
@@ -342,7 +459,10 @@ mod tests {
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
-            assert_eq!(substs.get(&1).unwrap(), &unification::Term::Atom(2));
+            assert_eq!(
+                substs.get(&unification::Term::Variable(1)).unwrap(),
+                &unification::Term::Atom(2)
+            );
         } else {
             assert!(false);
         }
@@ -362,7 +482,72 @@ mod tests {
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
-            assert_eq!(substs.get(&1).unwrap(), &unification::Term::Atom(1));
+            assert_eq!(
+                substs.get(&unification::Term::Variable(1)).unwrap(),
+                &unification::Term::Atom(1)
+            );
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn table() {
+        // Test NewTable.
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::NewTable);
+        assert!(vm.run().is_ok());
+        if let Some(vm::Value::Table(table)) = vm.stack.last() {
+            assert_eq!(table.len(), 0);
+        } else {
+            assert!(false);
+        }
+
+        // Test SetTable.
+        vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::NewTable);
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::SetTable);
+        assert!(vm.run().is_ok());
+        assert_eq!(vm.stack.len(), 1);
+        if let Some(vm::Value::Table(table)) = vm.stack.last() {
+            assert_eq!(table.len(), 1);
+            assert_eq!(
+                table.get(&unification::Term::Variable(1)).unwrap(),
+                &unification::Term::Atom(2)
+            );
+        } else {
+            assert!(false);
+        }
+
+        // Test GetTable.
+        vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::NewTable);
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::SetTable);
+        vm.instructions.push(vm::Opcode::Variable(2));
+        vm.instructions.push(vm::Opcode::GetTable);
+        assert!(vm.run().is_ok());
+        assert_eq!(vm.stack.len(), 2);
+        if let Some(vm::Value::None) = vm.stack.last() {
+            // Ok.
+        } else {
+            assert!(false);
+        }
+
+        vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::NewTable);
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::SetTable);
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::GetTable);
+        assert!(vm.run().is_ok());
+        assert_eq!(vm.stack.len(), 2);
+        if let Some(vm::Value::Term(unification::Term::Atom(2))) = vm.stack.last() {
+            // Ok.
         } else {
             assert!(false);
         }

@@ -48,10 +48,18 @@ fn eval(filename: &str, src: &str, ctx: &mut codegen::Context, vm: &mut vm::Virt
                                 println!("Ok.");
                             } else {
                                 for subst in substs {
-                                    if let Some(interned) = vm.lookup_interned(&subst.0) {
-                                        print!("{}: ", interned);
-                                    } else {
-                                        print!("{}: ", subst.0);
+                                    match subst.0 {
+                                        unification::Term::Atom(a)
+                                        | unification::Term::Variable(a) => {
+                                            if let Some(interned) = vm.lookup_interned(&a) {
+                                                print!("{}: ", interned);
+                                            } else {
+                                                print!("{}: ", a);
+                                            }
+                                        }
+                                        _ => {
+                                            println!("{:?}", subst.1);
+                                        }
                                     }
                                     match subst.1 {
                                         unification::Term::Atom(a)

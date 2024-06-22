@@ -216,7 +216,7 @@ mod tests {
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);
-            assert_eq!(substs.get(&1).unwrap(), &Term::Atom(2));
+            assert_eq!(substs.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
             assert_eq!(vm.lookup_interned(&1).unwrap(), "q");
             assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
         } else {
@@ -232,7 +232,7 @@ mod tests {
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);
-            assert_eq!(substs.get(&1).unwrap(), &Term::Atom(2));
+            assert_eq!(substs.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
             assert_eq!(vm.lookup_interned(&1).unwrap(), "q");
             assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
         } else {
@@ -252,7 +252,7 @@ mod tests {
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);
-            assert_eq!(substs.get(&3).unwrap(), &Term::Atom(4));
+            assert_eq!(substs.get(&Term::Variable(3)).unwrap(), &Term::Atom(4));
             assert_eq!(vm.lookup_interned(&3).unwrap(), "q");
             assert_eq!(vm.lookup_interned(&4).unwrap(), "oil");
         } else {
@@ -261,7 +261,7 @@ mod tests {
         vm.stack.pop();
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);
-            assert_eq!(substs.get(&1).unwrap(), &Term::Atom(2));
+            assert_eq!(substs.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
             assert_eq!(vm.lookup_interned(&1).unwrap(), "q");
             assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
         } else {

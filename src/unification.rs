@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 pub type Substitutions<T> = HashMap<u64, Term<T>>;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash)]
 pub enum Term<T> {
     Atom(T),
     Variable(u64),
