@@ -9,7 +9,7 @@ pub enum AST {
     Equals(Box<AST>, Box<AST>),
     Var(Vec<AST>, Box<AST>),
     Atom(String),
-    Variable(String, usize),
+    Variable(String),
     FnCall(String, Vec<AST>, usize),
     Program(Vec<AST>),
     Table(Vec<AST>),
@@ -59,7 +59,7 @@ impl fmt::Display for AST {
                 write!(f, ") {{ {} }}", body)
             }
             AST::Atom(atom) => write!(f, "'{}", atom),
-            AST::Variable(name, _) => write!(f, "{}", name),
+            AST::Variable(name) => write!(f, "{}", name),
             AST::FnCall(name, arguments, _) => {
                 write!(f, "{}(", name)?;
                 let mut first = true;
@@ -602,7 +602,7 @@ fn variable(
     if let Some(token) = tokens.next() {
         if let TokenKind::Literal(name) = token.kind {
             state.offset = token.offset;
-            Ok(AST::Variable(name, token.offset))
+            Ok(AST::Variable(name))
         } else {
             Err(SyntaxError {
                 msg: "Expected literal while parsing variable.".to_string(),

@@ -75,7 +75,7 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
         AST::Var(declarations, body) => {
             ctx.push();
             for declaration in declarations {
-                if let AST::Variable(v, _) = declaration {
+                if let AST::Variable(v) = declaration {
                     let id = vm.intern(v);
                     ctx.insert(id, v);
                 } else {
@@ -94,15 +94,13 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
                 vm.instructions.push(Opcode::Atom(id));
             }
         }
-        AST::Variable(v, offset) => {
+        AST::Variable(v) => {
             if let Some(id) = ctx.lookup(v) {
                 vm.instructions.push(Opcode::Variable(id));
             } else {
-                let msg = "Undefined variable: ".to_string() + v;
-                return Err(SyntaxError {
-                    msg,
-                    offset: *offset,
-                });
+                let id = vm.intern(v);
+                ctx.insert(id, v);
+                vm.instructions.push(Opcode::Variable(id));
             }
         }
         AST::FnCall(name, args, offset) => {
@@ -127,7 +125,17 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
                 generate(statement, ctx, vm)?;
             }
         }
-        AST::Table(members) => todo!("unimplemented"),
+        AST::Table(fields) => {
+            vm.instructions.push(Opcode::NewTable);
+            let mut gen_set_table = false;
+            for field in fields {
+                generate(field, ctx, vm)?;
+                if gen_set_table {
+                    vm.instructions.push(Opcode::SetTable);
+                }
+                gen_set_table = !gen_set_table;
+            }
+        }
     }
 
     Ok(())
@@ -264,6 +272,25 @@ mod tests {
             assert_eq!(substs.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
             assert_eq!(vm.lookup_interned(&1).unwrap(), "q");
             assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn table() {
+        let mut ctx = codegen::Context::new();
+        let mut vm = vm::VirtualMachine::new();
+        generate!("{x: 'olive, y: 'oil}", &mut ctx, &mut vm);
+        assert!(vm.run().is_ok());
+        if let Some(vm::Value::Table(table)) = vm.stack.last() {
+            assert_eq!(table.len(), 2);
+            assert_eq!(table.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
+            assert_eq!(table.get(&Term::Variable(3)).unwrap(), &Term::Atom(4));
+            assert_eq!(vm.lookup_interned(&1).unwrap(), "x");
+            assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
+            assert_eq!(vm.lookup_interned(&3).unwrap(), "y");
+            assert_eq!(vm.lookup_interned(&4).unwrap(), "oil");
         } else {
             assert!(false);
         }
