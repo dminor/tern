@@ -88,7 +88,7 @@ fn eval(filename: &str, src: &str, ctx: &mut codegen::Context, vm: &mut vm::Virt
                         }
                     },
                     Err(err) => {
-                        println!("RuntimeError: {}.", err.msg);
+                        println!("RuntimeError: {}", err.msg);
                         println!("Instructions:");
                         let start_ip = max(0, err.ip as i64 - 10) as usize;
                         for ip in start_ip..err.ip + 1 {

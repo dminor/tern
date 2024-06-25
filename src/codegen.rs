@@ -167,6 +167,7 @@ mod tests {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
         generate!("conj {'olive == 'olive, 'oil == 'oil }", &mut ctx, &mut vm);
+        vm.instructions.push(vm::Opcode::NewTable);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
@@ -189,6 +190,7 @@ mod tests {
             &mut ctx,
             &mut vm
         );
+        vm.instructions.push(vm::Opcode::NewTable);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
@@ -204,6 +206,7 @@ mod tests {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
         generate!("'olive == 'olive", &mut ctx, &mut vm);
+        vm.instructions.push(vm::Opcode::NewTable);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
@@ -219,6 +222,7 @@ mod tests {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
         generate!("var (q) { q == 'olive }", &mut ctx, &mut vm);
+        vm.instructions.push(vm::Opcode::NewTable);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
@@ -236,7 +240,11 @@ mod tests {
     fn fncall() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
-        generate!("next(solve(var (q) { q == 'olive }))", &mut ctx, &mut vm);
+        generate!(
+            "next(solve(var (q) { q == 'olive }, {}))",
+            &mut ctx,
+            &mut vm
+        );
         assert!(vm.run().is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);
@@ -253,7 +261,7 @@ mod tests {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
         generate!(
-            "next(solve(var (q) { q == 'olive }))\nnext(solve(var (q) { q == 'oil }))",
+            "next(solve(var (q) { q == 'olive }, {}))\nnext(solve(var (q) { q == 'oil }, {}))",
             &mut ctx,
             &mut vm
         );
