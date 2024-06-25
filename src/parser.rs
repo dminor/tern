@@ -13,6 +13,7 @@ pub enum AST {
     FnCall(String, Vec<AST>, usize),
     Program(Vec<AST>),
     Table(Vec<AST>),
+    Let(String, Box<AST>),
 }
 
 impl fmt::Display for AST {
@@ -94,6 +95,9 @@ impl fmt::Display for AST {
                 }
                 write!(f, "}}")
             }
+            AST::Let(name, expr) => {
+                write!(f, "let {} = {}", name, expr)
+            }
         }
     }
 }
@@ -127,6 +131,33 @@ fn expression(
     if let Some(token) = tokens.peek() {
         match &token.kind {
             TokenKind::LeftBrace => table(state, tokens),
+            TokenKind::Let => {
+                state.offset = token.offset;
+                tokens.next();
+                if let AST::Variable(name) = variable(state, tokens)? {
+                    if let Some(token) = tokens.next() {
+                        if token.kind != TokenKind::Equals {
+                            return Err(SyntaxError {
+                                msg: "Expected `=` while parsing let.".to_string(),
+                                offset: state.offset,
+                            });
+                        }
+                        state.offset = token.offset;
+                    } else {
+                        return Err(SyntaxError {
+                            msg: "Unexpected end of input while parsing let.".to_string(),
+                            offset: state.offset,
+                        });
+                    }
+                    let value = expression(state, tokens)?;
+                    Ok(AST::Let(name, Box::new(value)))
+                } else {
+                    Err(SyntaxError {
+                        msg: "Expected variable name while parsing let.".to_string(),
+                        offset: state.offset,
+                    })
+                }
+            }
             TokenKind::Literal(name) => {
                 let name = name.to_string();
                 let offset = token.offset;
@@ -139,7 +170,7 @@ fn expression(
         }
     } else {
         Err(SyntaxError {
-            msg: "Unexpected end of input while parsing.".to_string(),
+            msg: "Unexpected end of input while parsing expression.".to_string(),
             offset: state.offset,
         })
     }
@@ -735,5 +766,20 @@ mod tests {
             "Unexpected end of input while parsing table.",
             23
         );
+        parse!("let x = {}", "let x = {}");
+        parse!("let x = 'olive == 'olive", "let x = 'olive == 'olive");
+        parse!(
+            "let x = disj { 'red == 'red | 'bean == 'bean }",
+            "let x = disj { 'red == 'red | 'bean == 'bean }"
+        );
+        parsefails!("let", "Unexpected end of input while parsing var.", 2);
+        parsefails!("let x", "Unexpected end of input while parsing let.", 4);
+        parsefails!(
+            "let x =",
+            "Unexpected end of input while parsing expression.",
+            6
+        );
+        parsefails!("let 'x = {}", "Expected literal while parsing variable.", 2);
+        parsefails!("let {} = {}", "Expected literal while parsing variable.", 2);
     }
 }

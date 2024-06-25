@@ -1,3 +1,5 @@
+![tern logo](tern-logo-small.png)
+
 Tern
 ----
 Tern is a logic programming language.
@@ -8,13 +10,13 @@ in a dynamically typed language.
 
 Reserved Keywords
 -----------------
-The following keywords are reserved: `conj`, `disj` and `var`.
+The following keywords are reserved: `conj`, `disj`, `let`, and `var`.
 
 Syntax
 ------
-    statement  -> comment | expression
+    statement  -> comment | expression | let
     expression -> fncall | goal | table
-    let        -> "let" variable "=" fncall
+    let        -> "let" variable "=" expression
     comment    -> "#" .* "\n"
     table      -> "{" (term ":" term "," )* "}"
     fncall     -> fnname "(" ((expression ",")* expression)? ")"
@@ -45,3 +47,7 @@ Chapter 11 is about logic programming. The description of unification and the ac
 **Leon Stirling and Ehud Shapiro. The Art of Prolog (Second Edition), The MIT Press, Cambridge, MA.**
 The first section of this book is provides a great overview of logic programming, unification, and the computational model
 for logic programming.
+
+Colophon
+--------
+The tern logo was made by a souless ai.

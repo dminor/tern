@@ -136,6 +136,9 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
                 gen_set_table = !gen_set_table;
             }
         }
+        AST::Let(name, value) => {
+            todo!("not implemented");
+        }
     }
 
     Ok(())

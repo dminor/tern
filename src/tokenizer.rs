@@ -8,6 +8,7 @@ pub enum TokenKind {
     Comma,
     Dot,
     DoubleEquals,
+    Equals,
     LeftBrace,
     LeftBracket,
     LeftParen,
@@ -20,6 +21,7 @@ pub enum TokenKind {
     // Keywords
     Conj,
     Disj,
+    Let,
     Var,
 
     // Literals
@@ -33,6 +35,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Comma => write!(f, ","),
             TokenKind::DoubleEquals => write!(f, "=="),
             TokenKind::Dot => write!(f, "."),
+            TokenKind::Equals => write!(f, "="),
             TokenKind::LeftBrace => write!(f, "{{"),
             TokenKind::LeftBracket => write!(f, "["),
             TokenKind::LeftParen => write!(f, "("),
@@ -41,8 +44,9 @@ impl fmt::Display for TokenKind {
             TokenKind::RightBracket => write!(f, "]"),
             TokenKind::RightParen => write!(f, ")"),
             TokenKind::Tick => write!(f, "'"),
-            TokenKind::Disj => write!(f, "disj"),
             TokenKind::Conj => write!(f, "conj"),
+            TokenKind::Disj => write!(f, "disj"),
+            TokenKind::Let => write!(f, "let"),
             TokenKind::Var => write!(f, "var"),
             TokenKind::Literal(s) => write!(f, "{}", s),
         }
@@ -81,9 +85,9 @@ pub fn scan(src: &str) -> Result<Vec<Token>, TokenizerError> {
                     chars.next();
                     offset += 1;
                 } else {
-                    return Err(TokenizerError {
-                        msg: "Unexpected token while scanning `==`".to_string(),
-                        offset: offset + 1,
+                    tokens.push(Token {
+                        kind: TokenKind::Equals,
+                        offset,
                     });
                 }
             }
@@ -147,6 +151,10 @@ pub fn scan(src: &str) -> Result<Vec<Token>, TokenizerError> {
                     }),
                     "disj" => tokens.push(Token {
                         kind: TokenKind::Disj,
+                        offset,
+                    }),
+                    "let" => tokens.push(Token {
+                        kind: TokenKind::Let,
                         offset,
                     }),
                     "var" => tokens.push(Token {
@@ -268,7 +276,7 @@ mod tests {
             TokenKind::RightParen,
             TokenKind::RightBrace
         );
-        scanfails!("=", "Unexpected token while scanning `==`", 1);
+        scan!("=", TokenKind::Equals);
         scan!(
             "var (q) { 'olive == q }",
             TokenKind::Var,
@@ -347,6 +355,14 @@ mod tests {
             TokenKind::Colon,
             TokenKind::Tick,
             TokenKind::Literal("olive".to_string()),
+            TokenKind::RightBrace
+        );
+        scan!(
+            "let x = {}",
+            TokenKind::Let,
+            TokenKind::Literal("x".to_string()),
+            TokenKind::Equals,
+            TokenKind::LeftBrace,
             TokenKind::RightBrace
         );
     }
