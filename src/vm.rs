@@ -45,6 +45,12 @@ pub enum Opcode {
     // Get the field in the table with `key`. Pushes `None` for missing keys.
     // Table key -> Table value
     GetTable,
+    // Set a variable `name` in the environment to `value`.
+    // name value ->
+    SetEnv,
+    // Get the value variable `name` in the environment.
+    // name -> value
+    GetEnv,
 }
 
 pub enum Value {
@@ -91,6 +97,10 @@ pub struct VirtualMachine {
     pub interned: HashMap<u64, String>,
 
     pub stack: Vec<Value>,
+
+    // Because we don't currently support user functions, all let bindings
+    // occur at global scope.
+    pub env: HashMap<u64, Value>,
 }
 
 macro_rules! buildgoal {
@@ -358,6 +368,107 @@ impl VirtualMachine {
                         });
                     };
                 }
+                Opcode::SetEnv => {
+                    if let Some(value) = self.stack.pop() {
+                        let key = if let Some(value) = self.stack.pop() {
+                            if let Value::Term(term) = value {
+                                if let unification::Term::Variable(v) = term {
+                                    v
+                                } else {
+                                    return Err(RuntimeError {
+                                        msg: "TypeError: Expected variable.".to_string(),
+                                        ip: self.ip,
+                                        opcode: self.instructions[self.ip].clone(),
+                                    });
+                                }
+                            } else {
+                                return Err(RuntimeError {
+                                    msg: "TypeError: Expected variable.".to_string(),
+                                    ip: self.ip,
+                                    opcode: self.instructions[self.ip].clone(),
+                                });
+                            }
+                        } else {
+                            return Err(RuntimeError {
+                                msg: "Stack underflow.".to_string(),
+                                ip: self.ip,
+                                opcode: self.instructions[self.ip].clone(),
+                            });
+                        };
+                        self.env.insert(key, value);
+                    } else {
+                        return Err(RuntimeError {
+                            msg: "Stack underflow.".to_string(),
+                            ip: self.ip,
+                            opcode: self.instructions[self.ip].clone(),
+                        });
+                    };
+                }
+                Opcode::GetEnv => {
+                    let key = if let Some(value) = self.stack.pop() {
+                        if let Value::Term(term) = value {
+                            if let unification::Term::Variable(v) = term {
+                                v
+                            } else {
+                                return Err(RuntimeError {
+                                    msg: "TypeError: Expected variable.".to_string(),
+                                    ip: self.ip,
+                                    opcode: self.instructions[self.ip].clone(),
+                                });
+                            }
+                        } else {
+                            return Err(RuntimeError {
+                                msg: "TypeError: Expected variable.".to_string(),
+                                ip: self.ip,
+                                opcode: self.instructions[self.ip].clone(),
+                            });
+                        }
+                    } else {
+                        return Err(RuntimeError {
+                            msg: "Stack underflow.".to_string(),
+                            ip: self.ip,
+                            opcode: self.instructions[self.ip].clone(),
+                        });
+                    };
+                    if let Some(value) = self.env.get(&key) {
+                        match value {
+                            Value::Term(t) => {
+                                self.stack.push(Value::Term(t.clone()));
+                            }
+                            Value::Goal(g) => {
+                                self.stack.push(Value::Goal(g.clone()));
+                            }
+                            Value::None => {
+                                self.stack.push(Value::None);
+                            }
+                            Value::Stream(_) => {
+                                // TODO: We'll probably want to use a RefCell
+                                // and introduce a reference value to get this
+                                // working properly.
+                                return Err(RuntimeError {
+                                    msg: "Accessing streams through variables is not implemented."
+                                        .to_string(),
+                                    ip: self.ip,
+                                    opcode: self.instructions[self.ip].clone(),
+                                });
+                            }
+                            Value::Table(t) => {
+                                // TODO: Right now, tables are inmutable, so
+                                // we can just return a copy. But we'll need
+                                // to reconsider this if we make tables
+                                // mutable.
+                                self.stack.push(Value::Table(t.clone()));
+                            }
+                        }
+                    } else {
+                        return Err(RuntimeError {
+                            // TODO: include name in error message
+                            msg: "Undefined variable.".to_string(),
+                            ip: self.ip,
+                            opcode: self.instructions[self.ip].clone(),
+                        });
+                    }
+                }
             }
             self.ip += 1;
         }
@@ -371,6 +482,7 @@ impl VirtualMachine {
             next_id: 0,
             interned: HashMap::new(),
             stack: Vec::new(),
+            env: HashMap::new(),
         }
     }
 }
@@ -583,5 +695,82 @@ mod tests {
         } else {
             assert!(false);
         }
+    }
+
+    #[test]
+    fn env() {
+        let mut vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::SetEnv);
+        assert!(vm.run().is_ok());
+        assert_eq!(vm.stack.len(), 0);
+
+        // Terms
+        vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::SetEnv);
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::GetEnv);
+        assert!(vm.run().is_ok());
+        assert_eq!(vm.stack.len(), 1);
+        if let Some(vm::Value::Term(unification::Term::Atom(2))) = vm.stack.last() {
+            // Ok.
+        } else {
+            assert!(false);
+        }
+
+        // Goals
+        vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::Unify);
+        vm.instructions.push(vm::Opcode::SetEnv);
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::GetEnv);
+        assert!(vm.run().is_ok());
+        assert_eq!(vm.stack.len(), 1);
+        if let Some(vm::Value::Goal(_)) = vm.stack.last() {
+            // Ok.
+        } else {
+            assert!(false);
+        }
+
+        // Streams
+        vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::Unify);
+        vm.instructions.push(vm::Opcode::NewTable);
+        vm.instructions.push(vm::Opcode::Solve);
+        vm.instructions.push(vm::Opcode::SetEnv);
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::GetEnv);
+        assert!(!vm.run().is_ok());
+
+        // Tables
+        vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::NewTable);
+        vm.instructions.push(vm::Opcode::SetEnv);
+        vm.instructions.push(vm::Opcode::Variable(1));
+        vm.instructions.push(vm::Opcode::GetEnv);
+        assert!(vm.run().is_ok());
+        assert_eq!(vm.stack.len(), 1);
+        if let Some(vm::Value::Table(_)) = vm.stack.last() {
+            // Ok.
+        } else {
+            assert!(false);
+        }
+
+        // Try to use atom as a variable name.
+        vm = vm::VirtualMachine::new();
+        vm.instructions.push(vm::Opcode::Atom(1));
+        vm.instructions.push(vm::Opcode::Atom(2));
+        vm.instructions.push(vm::Opcode::SetEnv);
+        assert!(!vm.run().is_ok());
     }
 }
