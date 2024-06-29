@@ -121,7 +121,61 @@ fn statement(
     state: &mut ParseState,
     tokens: &mut Peekable<std::vec::IntoIter<Token>>,
 ) -> Result<AST, SyntaxError> {
-    expression(state, tokens)
+    if let Some(token) = tokens.peek() {
+        if token.kind == TokenKind::Let {
+            letstatement(state, tokens)
+        } else {
+            expression(state, tokens)
+        }
+    } else {
+        Err(SyntaxError {
+            msg: "Unexpected end of input while parsing statement.".to_string(),
+            offset: state.offset,
+        })
+    }
+}
+
+fn letstatement(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, SyntaxError> {
+    if let Some(token) = tokens.next() {
+        if token.kind != TokenKind::Let {
+            return Err(SyntaxError {
+                msg: "Expected `let`.".to_string(),
+                offset: state.offset,
+            });
+        }
+        state.offset = token.offset;
+        if let AST::Variable(name) = variable(state, tokens)? {
+            if let Some(token) = tokens.next() {
+                if token.kind != TokenKind::Equals {
+                    return Err(SyntaxError {
+                        msg: "Expected `=` while parsing let.".to_string(),
+                        offset: state.offset,
+                    });
+                }
+                state.offset = token.offset;
+            } else {
+                return Err(SyntaxError {
+                    msg: "Unexpected end of input while parsing let.".to_string(),
+                    offset: state.offset,
+                });
+            }
+            let value = expression(state, tokens)?;
+            Ok(AST::Let(name, Box::new(value)))
+        } else {
+            Err(SyntaxError {
+                msg: "Expected variable name while parsing let.".to_string(),
+                offset: state.offset,
+            })
+        }
+    } else {
+        Err(SyntaxError {
+            msg: "Unexpected end of input while parsing let.".to_string(),
+            offset: state.offset,
+        })
+    }
 }
 
 fn expression(
@@ -131,33 +185,6 @@ fn expression(
     if let Some(token) = tokens.peek() {
         match &token.kind {
             TokenKind::LeftBrace => table(state, tokens),
-            TokenKind::Let => {
-                state.offset = token.offset;
-                tokens.next();
-                if let AST::Variable(name) = variable(state, tokens)? {
-                    if let Some(token) = tokens.next() {
-                        if token.kind != TokenKind::Equals {
-                            return Err(SyntaxError {
-                                msg: "Expected `=` while parsing let.".to_string(),
-                                offset: state.offset,
-                            });
-                        }
-                        state.offset = token.offset;
-                    } else {
-                        return Err(SyntaxError {
-                            msg: "Unexpected end of input while parsing let.".to_string(),
-                            offset: state.offset,
-                        });
-                    }
-                    let value = expression(state, tokens)?;
-                    Ok(AST::Let(name, Box::new(value)))
-                } else {
-                    Err(SyntaxError {
-                        msg: "Expected variable name while parsing let.".to_string(),
-                        offset: state.offset,
-                    })
-                }
-            }
             TokenKind::Literal(name) => {
                 let name = name.to_string();
                 let offset = token.offset;
