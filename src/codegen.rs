@@ -137,7 +137,15 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
             }
         }
         AST::Let(name, value) => {
-            todo!("not implemented");
+            if let Some(id) = ctx.lookup(name) {
+                vm.instructions.push(Opcode::Variable(id));
+            } else {
+                let id = vm.intern(name);
+                ctx.insert(id, name);
+                vm.instructions.push(Opcode::Variable(id));
+            }
+            generate(value, ctx, vm)?;
+            vm.instructions.push(Opcode::SetEnv);
         }
     }
 
@@ -305,5 +313,17 @@ mod tests {
         } else {
             assert!(false);
         }
+    }
+
+    #[test]
+    fn letstatement() {
+        let mut ctx = codegen::Context::new();
+        let mut vm = vm::VirtualMachine::new();
+        generate!(
+            "let x = {}\nlet y = 'banana == 'apple\nlet z = solve('banana == 'banana, {})",
+            &mut ctx,
+            &mut vm
+        );
+        assert!(vm.run().is_ok());
     }
 }
