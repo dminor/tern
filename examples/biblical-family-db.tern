@@ -1,0 +1,47 @@
+# This is the biblical family database example from Chapter 1
+# of The Art of Prolog.
+
+let male = var(x) {
+    disj {
+        x == 'terach |
+        x == 'abraham |
+        x == 'nachor |
+        x == 'haran |
+        x == 'isaac |
+        x == 'lot
+    }
+}
+
+let female = var(x) {
+    disj {
+        x == 'sarah |
+        x == 'milcah |
+        x == 'yiscah
+    }
+}
+
+let father = var(x, y) {
+    disj {
+        conj {x == 'terach, y == 'abraham} |
+        conj {x == 'terach, y == 'nachor} |
+        conj {x == 'terach, y == 'haran} |
+        conj {x == 'abraham, y == 'isaac} |
+        conj {x == 'haran, y == 'lot} |
+        conj {x == 'haran, y == 'milcah} |
+        conj {x == 'haran, y == 'yiscah}
+    }
+}
+
+let mother = var(x, y) {
+    disj {
+        conj {x == 'sarah, y == 'isaac}
+    }
+}
+
+# TODO: We don't currently support binding references inside of a goal.
+# let son = var(x, y) {
+#     conj {
+#         father(y, x),
+#         male(x)
+#     }
+# }

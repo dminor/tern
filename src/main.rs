@@ -81,11 +81,9 @@ fn eval(filename: &str, src: &str, ctx: &mut codegen::Context, vm: &mut vm::Virt
                             println!("No.");
                         }
                         Some(value) => {
-                            println!("InternalError: Unexpected value on stack: {}.", value);
+                            println!("{}", value);
                         }
-                        None => {
-                            println!("InternalError: Stack underflow.");
-                        }
+                        _ => {}
                     },
                     Err(err) => {
                         println!("RuntimeError: {}", err.msg);
@@ -122,7 +120,12 @@ fn main() -> io::Result<()> {
     let mut ctx = codegen::Context::new();
     let mut vm = vm::VirtualMachine::new();
     let args: Vec<String> = env::args().collect();
+    let mut run_interactive = false;
     for i in 1..args.len() {
+        if args[i] == "--interactive" {
+            run_interactive = true;
+            continue;
+        }
         let filename = &args[i];
         let mut file = File::open(filename)?;
         let mut program = String::new();
@@ -131,7 +134,7 @@ fn main() -> io::Result<()> {
     }
 
     // Not running interactively.
-    if args.len() > 1 {
+    if !run_interactive {
         return Ok(());
     }
 

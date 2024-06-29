@@ -136,7 +136,7 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
                 gen_set_table = !gen_set_table;
             }
         }
-        AST::Let(name, value) => {
+        AST::LetBinding(name, value) => {
             if let Some(id) = ctx.lookup(name) {
                 vm.instructions.push(Opcode::Variable(id));
             } else {
@@ -146,6 +146,16 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
             }
             generate(value, ctx, vm)?;
             vm.instructions.push(Opcode::SetEnv);
+        }
+        AST::BindingRef(name) => {
+            if let Some(id) = ctx.lookup(name) {
+                vm.instructions.push(Opcode::Variable(id));
+            } else {
+                let id = vm.intern(name);
+                ctx.insert(id, name);
+                vm.instructions.push(Opcode::Variable(id));
+            }
+            vm.instructions.push(Opcode::GetEnv);
         }
     }
 
@@ -316,14 +326,31 @@ mod tests {
     }
 
     #[test]
-    fn letstatement() {
+    fn letbindings() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
         generate!(
-            "let x = {}\nlet y = 'banana == 'apple\nlet z = solve('banana == 'banana, {})",
+            "let x = {x: 'olive, y: 'oil}\nlet y = 'banana == 'apple\nlet z = solve('banana == 'banana, {}) x y",
             &mut ctx,
             &mut vm
         );
         assert!(vm.run().is_ok());
+        if let Some(vm::Value::Goal(_)) = vm.stack.pop() {
+            // Ok.
+        } else {
+            assert!(false);
+        }
+        if let Some(vm::Value::Table(table)) = vm.stack.pop() {
+            assert_eq!(table.len(), 2);
+            assert_eq!(table.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
+            assert_eq!(table.get(&Term::Variable(3)).unwrap(), &Term::Atom(4));
+            assert_eq!(vm.lookup_interned(&1).unwrap(), "x");
+            assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
+            assert_eq!(vm.lookup_interned(&3).unwrap(), "y");
+            assert_eq!(vm.lookup_interned(&4).unwrap(), "oil");
+        } else {
+            assert!(false);
+        }
+        // TODO: Add test for retrieving stream from let binding when we support it.
     }
 }

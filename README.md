@@ -14,12 +14,13 @@ The following keywords are reserved: `conj`, `disj`, `let`, and `var`.
 
 Syntax
 ------
-    statement  -> comment | expression | let
-    expression -> fncall | goal | table
-    let        -> "let" variable "=" expression
+    statement  -> comment | letbinding | expression
     comment    -> "#" .* "\n"
+    letbinding -> "let" variable "=" expression
+    expression -> table | fncall | letref | goal
     table      -> "{" (term ":" term "," )* "}"
-    fncall     -> fnname "(" ((expression ",")* expression)? ")"
+    fncall     -> variable  "(" ((expression ",")* expression)? ")"
+    bindingref -> variable
     goal       -> disj | conj | var | equals
     disj       -> "disj" "{" (goal "|")* goal "}"
     conj       -> "conj" "{" (goal ",")* goal "}"
@@ -29,7 +30,6 @@ Syntax
     atom       -> "'"[A-Za-z0-9]+
     varlist    -> "(" (variable ",")* variable ")"
     variable   -> [a-z][A-Za-z0-9]*
-    fnname     -> [A-Z][A-Za-z0-9]*
 
 Annotated Bibliography
 ----------------------
