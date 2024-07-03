@@ -120,7 +120,7 @@ fn main() -> io::Result<()> {
     let mut ctx = codegen::Context::new();
     let mut vm = vm::VirtualMachine::new();
     let args: Vec<String> = env::args().collect();
-    let mut run_interactive = false;
+    let mut run_interactive = args.len() == 1;
     for i in 1..args.len() {
         if args[i] == "--interactive" {
             run_interactive = true;
