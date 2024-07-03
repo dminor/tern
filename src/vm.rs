@@ -166,38 +166,10 @@ impl VirtualMachine {
                 Opcode::Disj2 => buildgoal!(self, Goal, Disj2),
                 Opcode::Unify => buildgoal!(self, Term, Unify),
                 Opcode::Solve => match self.stack.pop() {
-                    Some(Value::Table(table)) => match self.stack.pop() {
-                        Some(Value::Goal(goal)) => {
-                            let mut substs = HashMap::new();
-                            for field in table {
-                                if let unification::Term::Variable(v) = field.0 {
-                                    substs.insert(v, field.1);
-                                } else {
-                                    return Err(RuntimeError {
-                                        msg: "TypeError: keys in substitutions must be variables"
-                                            .to_string(),
-                                        ip: self.ip,
-                                        opcode: self.instructions[self.ip].clone(),
-                                    });
-                                }
-                            }
-                            self.stack.push(Value::Stream(goal.solve(&substs)));
-                        }
-                        None => {
-                            return Err(RuntimeError {
-                                msg: "Stack underflow.".to_string(),
-                                ip: self.ip,
-                                opcode: self.instructions[self.ip].clone(),
-                            });
-                        }
-                        _ => {
-                            return Err(RuntimeError {
-                                msg: "TypeError: Expected goal.".to_string(),
-                                ip: self.ip,
-                                opcode: self.instructions[self.ip].clone(),
-                            });
-                        }
-                    },
+                    Some(Value::Goal(goal)) => {
+                        let substs = HashMap::new();
+                        self.stack.push(Value::Stream(goal.solve(&substs)));
+                    }
                     None => {
                         return Err(RuntimeError {
                             msg: "Stack underflow.".to_string(),
@@ -207,7 +179,7 @@ impl VirtualMachine {
                     }
                     _ => {
                         return Err(RuntimeError {
-                            msg: "TypeError: Expected table.".to_string(),
+                            msg: "TypeError: Expected goal.".to_string(),
                             ip: self.ip,
                             opcode: self.instructions[self.ip].clone(),
                         });
@@ -220,6 +192,7 @@ impl VirtualMachine {
                             for subst in substs {
                                 table.insert(unification::Term::Variable(subst.0), subst.1);
                             }
+                            self.stack.push(Value::Stream(stream));
                             self.stack.push(Value::Table(table));
                         }
                         None => self.stack.push(Value::None),
@@ -231,7 +204,8 @@ impl VirtualMachine {
                             opcode: self.instructions[self.ip].clone(),
                         });
                     }
-                    _ => {
+                    Some(v) => {
+                        println!("weird value {}", v);
                         return Err(RuntimeError {
                             msg: "Unexpected value.".to_string(),
                             ip: self.ip,
@@ -546,7 +520,6 @@ mod tests {
         vm.instructions.push(vm::Opcode::Atom(1));
         vm.instructions.push(vm::Opcode::Atom(1));
         vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::NewTable);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
@@ -560,7 +533,6 @@ mod tests {
         vm.instructions.push(vm::Opcode::Atom(1));
         vm.instructions.push(vm::Opcode::Atom(2));
         vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::NewTable);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
@@ -573,7 +545,6 @@ mod tests {
         vm.instructions.push(vm::Opcode::Variable(1));
         vm.instructions.push(vm::Opcode::Atom(2));
         vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::NewTable);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
@@ -597,7 +568,6 @@ mod tests {
         vm.instructions.push(vm::Opcode::Atom(2));
         vm.instructions.push(vm::Opcode::Unify);
         vm.instructions.push(vm::Opcode::Disj2);
-        vm.instructions.push(vm::Opcode::NewTable);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());
@@ -621,7 +591,6 @@ mod tests {
         vm.instructions.push(vm::Opcode::Atom(2));
         vm.instructions.push(vm::Opcode::Unify);
         vm.instructions.push(vm::Opcode::Conj2);
-        vm.instructions.push(vm::Opcode::NewTable);
         vm.instructions.push(vm::Opcode::Solve);
         vm.instructions.push(vm::Opcode::Next);
         assert!(vm.run().is_ok());

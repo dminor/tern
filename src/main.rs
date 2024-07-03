@@ -31,7 +31,9 @@ fn display_error(filename: &str, src: &str, err_type: &str, err_msg: &str, err_o
     let width = line.to_string().len() + 2;
     println!("{}: {}", err_type, err_msg);
     println!("{s:>width$}|", s = " ", width = width);
-    println!(" {} | {}", line, lines[line - 1]);
+    if line > 0 {
+        println!(" {} | {}", line, lines[line - 1]);
+    }
     print!("{s:>width$}|", s = " ", width = width);
     println!("{s:>width$}^", s = " ", width = col);
     println!("--> {}:{}", filename, line);
