@@ -10,15 +10,16 @@ in a dynamically typed language.
 
 Reserved Keywords
 -----------------
-The following keywords are reserved: `conj`, `disj`, `let`, and `var`.
+The following keywords are reserved: `conj`, `disj`, `let`, `rel`, and `var`.
 
 Syntax
 ------
     statement  -> comment | letbinding | expression
     comment    -> "#" .* "\n"
     letbinding -> "let" variable "=" expression
-    expression -> table | fncall | letref | goal
+    expression -> table | relation | fncall | letref | goal
     table      -> "{" (term ":" term "," )* "}"
+    relation   -> "rel" varlist "{" goal "}"
     fncall     -> variable  "(" ((expression ",")* expression)? ")"
     bindingref -> variable
     goal       -> disj | conj | var | equals

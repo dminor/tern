@@ -15,6 +15,7 @@ pub enum AST {
     Table(Vec<AST>),
     LetBinding(String, Box<AST>),
     BindingRef(String),
+    Relation(Vec<AST>, Box<AST>),
 }
 
 impl fmt::Display for AST {
@@ -101,6 +102,19 @@ impl fmt::Display for AST {
             }
             AST::BindingRef(name) => {
                 write!(f, "{}", name)
+            }
+            AST::Relation(parameters, body) => {
+                write!(f, "rel(")?;
+                let mut first = true;
+                for parameter in parameters {
+                    if !first {
+                        write!(f, ", {}", parameter)?;
+                    } else {
+                        first = false;
+                        write!(f, "{}", parameter)?;
+                    }
+                }
+                write!(f, ") {{ {} }}", body)
             }
         }
     }
@@ -189,6 +203,7 @@ fn expression(
     if let Some(token) = tokens.peek() {
         match &token.kind {
             TokenKind::LeftBrace => table(state, tokens),
+            TokenKind::Rel => relation(state, tokens),
             TokenKind::Literal(name) => {
                 let name = name.to_string();
                 let offset = token.offset;
@@ -270,6 +285,55 @@ fn table(
     } else {
         Err(SyntaxError {
             msg: "Unexpected end of input while parsing table.".to_string(),
+            offset: state.offset,
+        })
+    }
+}
+
+fn relation(
+    state: &mut ParseState,
+    tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+) -> Result<AST, SyntaxError> {
+    if let Some(token) = tokens.next() {
+        if token.kind != TokenKind::Rel {
+            return Err(SyntaxError {
+                msg: "Expected `rel`.".to_string(),
+                offset: state.offset,
+            });
+        }
+        state.offset = token.offset;
+        let parameters = varlist(state, tokens)?;
+        if let Some(token) = tokens.next() {
+            if token.kind != TokenKind::LeftBrace {
+                return Err(SyntaxError {
+                    msg: "Expected `{`.".to_string(),
+                    offset: state.offset,
+                });
+            }
+        } else {
+            return Err(SyntaxError {
+                msg: "Unexpected end of input while parsing `rel`.".to_string(),
+                offset: state.offset,
+            });
+        }
+        let body = goal(state, tokens)?;
+        if let Some(token) = tokens.next() {
+            if token.kind != TokenKind::RightBrace {
+                return Err(SyntaxError {
+                    msg: "Expected `}`.".to_string(),
+                    offset: state.offset,
+                });
+            }
+        } else {
+            return Err(SyntaxError {
+                msg: "Unexpected end of input while parsing `rel`.".to_string(),
+                offset: state.offset,
+            });
+        }
+        Ok(AST::Relation(parameters, Box::new(body)))
+    } else {
+        Err(SyntaxError {
+            msg: "Unexpected end of input while parsing `rel`.".to_string(),
             offset: state.offset,
         })
     }
@@ -821,5 +885,25 @@ mod tests {
         parsefails!("let 'x = {}", "Expected literal while parsing variable.", 2);
         parsefails!("let {} = {}", "Expected literal while parsing variable.", 2);
         parse!("x", "x");
+        parse!("rel(x) { x == 'olive }", "rel(x) { x == 'olive }");
+        parse!(
+            "let y = rel(x) { disj { x == 'red | x == 'bean } }",
+            "let y = rel(x) { disj { x == 'red | x == 'bean } }"
+        );
+        parsefails!(
+            "rel(x) { x == 'olive ",
+            "Unexpected end of input while parsing `rel`.",
+            19
+        );
+        parsefails!(
+            "rel(x) { }",
+            "Expected conj, disj, equals or var while parsing goal.",
+            5
+        );
+        parsefails!(
+            "rel() { 'olive == 'oil }",
+            "Expected literal while parsing variable.",
+            2
+        );
     }
 }

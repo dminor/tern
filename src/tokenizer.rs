@@ -22,6 +22,7 @@ pub enum TokenKind {
     Conj,
     Disj,
     Let,
+    Rel,
     Var,
 
     // Literals
@@ -47,6 +48,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Conj => write!(f, "conj"),
             TokenKind::Disj => write!(f, "disj"),
             TokenKind::Let => write!(f, "let"),
+            TokenKind::Rel => write!(f, "rel"),
             TokenKind::Var => write!(f, "var"),
             TokenKind::Literal(s) => write!(f, "{}", s),
         }
@@ -155,6 +157,10 @@ pub fn scan(src: &str) -> Result<Vec<Token>, TokenizerError> {
                     }),
                     "let" => tokens.push(Token {
                         kind: TokenKind::Let,
+                        offset,
+                    }),
+                    "rel" => tokens.push(Token {
+                        kind: TokenKind::Rel,
                         offset,
                     }),
                     "var" => tokens.push(Token {
@@ -363,6 +369,19 @@ mod tests {
             TokenKind::Literal("x".to_string()),
             TokenKind::Equals,
             TokenKind::LeftBrace,
+            TokenKind::RightBrace
+        );
+        scan!(
+            "rel(x) { x == 'apple }",
+            TokenKind::Rel,
+            TokenKind::LeftParen,
+            TokenKind::Literal("x".to_string()),
+            TokenKind::RightParen,
+            TokenKind::LeftBrace,
+            TokenKind::Literal("x".to_string()),
+            TokenKind::DoubleEquals,
+            TokenKind::Tick,
+            TokenKind::Literal("apple".to_string()),
             TokenKind::RightBrace
         );
     }

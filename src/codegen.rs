@@ -157,6 +157,9 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
             }
             vm.instructions.push(Opcode::GetEnv);
         }
+        AST::Relation(parameters, body) => {
+            todo!("Code generation for relations");
+        }
     }
 
     Ok(())
