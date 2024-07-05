@@ -33,9 +33,6 @@ pub enum Opcode {
     // Pop the value from the top of the stack.
     // Value ->
     Pop,
-    // Print the value from the top of the stack to stdout (for debugging).
-    // Value -> Value
-    Print,
     // Create a new table and push it to the stack.
     // -> Table
     NewTable,
@@ -53,12 +50,31 @@ pub enum Opcode {
     GetEnv,
 }
 
+#[derive(Clone, Copy)]
+pub enum CallableKind {
+    Relation,
+}
+
+impl fmt::Display for CallableKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CallableKind::Relation => write!(f, "relation"),
+        }
+    }
+}
+
 pub enum Value {
     Term(unification::Term<AtomType>),
     Goal(Rc<dyn logic::Goal<AtomType>>),
     Stream(Box<dyn Iterator<Item = unification::Substitutions<AtomType>>>),
     Table(HashMap<unification::Term<AtomType>, unification::Term<AtomType>>),
     None,
+    Callable {
+        kind: CallableKind,
+        parameters: Rc<Vec<u64>>,
+        instructions: Rc<Vec<Opcode>>,
+        ip: usize,
+    },
 }
 
 impl fmt::Display for Value {
@@ -85,6 +101,12 @@ impl fmt::Display for Value {
                 write!(f, ")>")
             }
             Value::None => write!(f, "<none>"),
+            Value::Callable {
+                kind,
+                parameters,
+                instructions,
+                ip,
+            } => write!(f, "<{}>", kind),
         }
     }
 }
@@ -222,28 +244,6 @@ impl VirtualMachine {
                         });
                     }
                 }
-                Opcode::Print => match self.stack.last() {
-                    Some(value) => match value {
-                        Value::Term(term) => {
-                            println!("{:?}", term);
-                        }
-                        Value::Goal(goal) => println!("goal#{:?}", std::ptr::addr_of!(goal)),
-                        Value::Stream(stream) => {
-                            println!("stream#{:?}", std::ptr::addr_of!(stream))
-                        }
-                        Value::Table(table) => {
-                            println!("{:?}", table);
-                        }
-                        Value::None => println!("None"),
-                    },
-                    None => {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
-                    }
-                },
                 Opcode::NewTable => {
                     let table = HashMap::new();
                     self.stack.push(Value::Table(table));
@@ -433,6 +433,19 @@ impl VirtualMachine {
                                 // mutable.
                                 self.stack.push(Value::Table(t.clone()));
                             }
+                            Value::Callable {
+                                kind,
+                                parameters,
+                                instructions,
+                                ip,
+                            } => {
+                                self.stack.push(Value::Callable {
+                                    kind: *kind,
+                                    parameters: parameters.clone(),
+                                    instructions: instructions.clone(),
+                                    ip: *ip,
+                                });
+                            }
                         }
                     } else {
                         return Err(RuntimeError {
@@ -511,7 +524,13 @@ mod tests {
         let table = HashMap::new();
         vm.stack.push(vm::Value::Table(table));
         vm.stack.push(vm::Value::None);
-        assert_eq!(vm.stack.len(), 8);
+        vm.stack.push(vm::Value::Callable {
+            kind: vm::CallableKind::Relation,
+            parameters: Rc::new(Vec::new()),
+            instructions: Rc::new(Vec::new()),
+            ip: 0,
+        });
+        assert_eq!(vm.stack.len(), 9);
     }
 
     #[test]
