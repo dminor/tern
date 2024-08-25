@@ -1,4 +1,3 @@
-use crate::vm::Opcode;
 use std::error::Error;
 use std::fmt;
 
@@ -6,7 +5,6 @@ use std::fmt;
 pub struct RuntimeError {
     pub msg: String,
     pub ip: usize,
-    pub opcode: Opcode,
 }
 
 impl fmt::Display for RuntimeError {

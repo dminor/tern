@@ -123,17 +123,16 @@ pub struct VirtualMachine {
 }
 
 macro_rules! err {
-    ($vm: expr, $msg: expr, $ip: expr, $opcode: expr) => {{
+    ($vm: expr, $msg: expr, $ip: expr) => {{
         return Err(RuntimeError {
             msg: $msg.to_string(),
             ip: $ip,
-            opcode: $opcode.clone(),
         });
     }};
 }
 
 macro_rules! buildgoal {
-    ($vm:expr, $type:tt, $goal:tt, $ip: expr, $opcode: expr) => {{
+    ($vm:expr, $type:tt, $goal:tt, $ip: expr) => {{
         match $vm.stack.pop() {
             Some(Value::$type(left)) => match $vm.stack.pop() {
                 Some(Value::$type(right)) => {
@@ -141,17 +140,17 @@ macro_rules! buildgoal {
                         .push(Value::Goal(Rc::new(logic::$goal::new(left, right))));
                 }
                 None => {
-                    err!($vm, "Stack underflow.", $ip, $opcode);
+                    err!($vm, "Stack underflow.", $ip);
                 }
                 _ => {
-                    err!($vm, "Expected term.", $ip, $opcode);
+                    err!($vm, "Expected term.", $ip);
                 }
             },
             None => {
-                err!($vm, "Stack underflow.", $ip, $opcode);
+                err!($vm, "Stack underflow.", $ip);
             }
             _ => {
-                err!($vm, "Expected term.", $ip, $opcode);
+                err!($vm, "Expected term.", $ip);
             }
         }
     }};
@@ -171,25 +170,24 @@ impl VirtualMachine {
     pub fn run(&mut self, instr: Rc<Vec<Opcode>>) -> Result<(), RuntimeError> {
         let mut ip = 0;
         while ip < instr.len() {
-            let opcode = &instr[ip];
-            match opcode {
+            match &instr[ip] {
                 Opcode::Atom(atom) => self.stack.push(Value::Term(unification::Term::Atom(*atom))),
                 Opcode::Variable(var) => self
                     .stack
                     .push(Value::Term(unification::Term::Variable(*var))),
-                Opcode::Conj2 => buildgoal!(self, Goal, Conj2, ip, opcode),
-                Opcode::Disj2 => buildgoal!(self, Goal, Disj2, ip, opcode),
-                Opcode::Unify => buildgoal!(self, Term, Unify, ip, opcode),
+                Opcode::Conj2 => buildgoal!(self, Goal, Conj2, ip),
+                Opcode::Disj2 => buildgoal!(self, Goal, Disj2, ip),
+                Opcode::Unify => buildgoal!(self, Term, Unify, ip),
                 Opcode::Solve => match self.stack.pop() {
                     Some(Value::Goal(goal)) => {
                         let substs = HashMap::new();
                         self.stack.push(Value::Stream(goal.solve(&substs)));
                     }
                     None => {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     }
                     _ => {
-                        err!(self, "TypeError: Expected goal.", ip, opcode);
+                        err!(self, "TypeError: Expected goal.", ip);
                     }
                 },
                 Opcode::Next => match self.stack.pop() {
@@ -205,16 +203,16 @@ impl VirtualMachine {
                         None => self.stack.push(Value::None),
                     },
                     None => {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     }
                     Some(_) => {
                         // TODO: Add value to error message...
-                        err!(self, "Unexpected value.", ip, opcode);
+                        err!(self, "Unexpected value.", ip);
                     }
                 },
                 Opcode::Pop => {
                     if self.stack.pop().is_none() {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     }
                 }
                 Opcode::NewTable => {
@@ -226,28 +224,28 @@ impl VirtualMachine {
                         if let Value::Term(term) = value {
                             term
                         } else {
-                            err!(self, "TypeError: Expected term.", ip, opcode);
+                            err!(self, "TypeError: Expected term.", ip);
                         }
                     } else {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     };
                     let key = if let Some(value) = self.stack.pop() {
                         if let Value::Term(term) = value {
                             term
                         } else {
-                            err!(self, "TypeError: Expected term.", ip, opcode);
+                            err!(self, "TypeError: Expected term.", ip);
                         }
                     } else {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     };
                     if let Some(table) = self.stack.last_mut() {
                         if let Value::Table(table) = table {
                             table.insert(key, value);
                         } else {
-                            err!(self, "Expected table.", ip, opcode);
+                            err!(self, "Expected table.", ip);
                         }
                     } else {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     };
                 }
                 Opcode::GetTable => {
@@ -255,10 +253,10 @@ impl VirtualMachine {
                         if let Value::Term(term) = value {
                             term
                         } else {
-                            err!(self, "TypeError: Expected Term.", ip, opcode);
+                            err!(self, "TypeError: Expected Term.", ip);
                         }
                     } else {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     };
                     if let Some(table) = self.stack.last_mut() {
                         if let Value::Table(table) = table {
@@ -269,10 +267,10 @@ impl VirtualMachine {
                                 self.stack.push(Value::None);
                             }
                         } else {
-                            err!(self, "TypeError: Expected table.", ip, opcode);
+                            err!(self, "TypeError: Expected table.", ip);
                         }
                     } else {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     };
                 }
                 Opcode::SetEnv => {
@@ -282,17 +280,17 @@ impl VirtualMachine {
                                 if let unification::Term::Variable(v) = term {
                                     v
                                 } else {
-                                    err!(self, "TypeError: Expected variable.", ip, opcode);
+                                    err!(self, "TypeError: Expected variable.", ip);
                                 }
                             } else {
-                                err!(self, "TypeError: Expected variable.", ip, opcode);
+                                err!(self, "TypeError: Expected variable.", ip);
                             }
                         } else {
-                            err!(self, "Stack underflow.", ip, opcode);
+                            err!(self, "Stack underflow.", ip);
                         };
                         self.env.insert(key, value);
                     } else {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     };
                 }
                 Opcode::GetEnv => {
@@ -301,13 +299,13 @@ impl VirtualMachine {
                             if let unification::Term::Variable(v) = term {
                                 v
                             } else {
-                                err!(self, "TypeError: Expected variable.", ip, opcode);
+                                err!(self, "TypeError: Expected variable.", ip);
                             }
                         } else {
-                            err!(self, "TypeError: Expected variable.", ip, opcode);
+                            err!(self, "TypeError: Expected variable.", ip);
                         }
                     } else {
-                        err!(self, "Stack underflow.", ip, opcode);
+                        err!(self, "Stack underflow.", ip);
                     };
                     if let Some(value) = self.env.get(&key) {
                         match value {
@@ -328,7 +326,6 @@ impl VirtualMachine {
                                     msg: "Accessing streams through variables is not implemented."
                                         .to_string(),
                                     ip: ip,
-                                    opcode: opcode.clone(),
                                 });
                             }
                             Value::Table(t) => {
@@ -354,7 +351,7 @@ impl VirtualMachine {
                         }
                     } else {
                         // TODO: include name in error message
-                        err!(self, "Undefined variable.", ip, opcode);
+                        err!(self, "Undefined variable.", ip);
                     }
                 }
             }
