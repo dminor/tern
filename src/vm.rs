@@ -103,18 +103,15 @@ impl fmt::Display for Value {
             Value::None => write!(f, "<none>"),
             Value::Callable {
                 kind,
-                parameters,
-                instructions,
-                ip,
+                parameters: _,
+                instructions: _,
+                ip: _,
             } => write!(f, "<{}>", kind),
         }
     }
 }
 
 pub struct VirtualMachine {
-    pub instructions: Vec<Opcode>,
-    pub ip: usize,
-
     next_id: u64,
     pub interned: HashMap<u64, String>,
 
@@ -126,17 +123,17 @@ pub struct VirtualMachine {
 }
 
 macro_rules! err {
-    ($vm: expr, $msg: expr) => {{
+    ($vm: expr, $msg: expr, $ip: expr, $opcode: expr) => {{
         return Err(RuntimeError {
             msg: $msg.to_string(),
-            ip: $vm.ip,
-            opcode: $vm.instructions[$vm.ip].clone(),
+            ip: $ip,
+            opcode: $opcode.clone(),
         });
     }};
 }
 
 macro_rules! buildgoal {
-    ($vm:expr, $type:tt, $goal:tt) => {{
+    ($vm:expr, $type:tt, $goal:tt, $ip: expr, $opcode: expr) => {{
         match $vm.stack.pop() {
             Some(Value::$type(left)) => match $vm.stack.pop() {
                 Some(Value::$type(right)) => {
@@ -144,17 +141,17 @@ macro_rules! buildgoal {
                         .push(Value::Goal(Rc::new(logic::$goal::new(left, right))));
                 }
                 None => {
-                    err!($vm, "Stack underflow.");
+                    err!($vm, "Stack underflow.", $ip, $opcode);
                 }
                 _ => {
-                    err!($vm, "Expected term.");
+                    err!($vm, "Expected term.", $ip, $opcode);
                 }
             },
             None => {
-                err!($vm, "Stack underflow.");
+                err!($vm, "Stack underflow.", $ip, $opcode);
             }
             _ => {
-                err!($vm, "Expected term.");
+                err!($vm, "Expected term.", $ip, $opcode);
             }
         }
     }};
@@ -171,26 +168,28 @@ impl VirtualMachine {
         self.interned.get(id)
     }
 
-    pub fn run(&mut self) -> Result<(), RuntimeError> {
-        while self.ip < self.instructions.len() {
-            match &self.instructions[self.ip] {
+    pub fn run(&mut self, instr: Rc<Vec<Opcode>>) -> Result<(), RuntimeError> {
+        let mut ip = 0;
+        while ip < instr.len() {
+            let opcode = &instr[ip];
+            match opcode {
                 Opcode::Atom(atom) => self.stack.push(Value::Term(unification::Term::Atom(*atom))),
                 Opcode::Variable(var) => self
                     .stack
                     .push(Value::Term(unification::Term::Variable(*var))),
-                Opcode::Conj2 => buildgoal!(self, Goal, Conj2),
-                Opcode::Disj2 => buildgoal!(self, Goal, Disj2),
-                Opcode::Unify => buildgoal!(self, Term, Unify),
+                Opcode::Conj2 => buildgoal!(self, Goal, Conj2, ip, opcode),
+                Opcode::Disj2 => buildgoal!(self, Goal, Disj2, ip, opcode),
+                Opcode::Unify => buildgoal!(self, Term, Unify, ip, opcode),
                 Opcode::Solve => match self.stack.pop() {
                     Some(Value::Goal(goal)) => {
                         let substs = HashMap::new();
                         self.stack.push(Value::Stream(goal.solve(&substs)));
                     }
                     None => {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     }
                     _ => {
-                        err!(self, "TypeError: Expected goal.");
+                        err!(self, "TypeError: Expected goal.", ip, opcode);
                     }
                 },
                 Opcode::Next => match self.stack.pop() {
@@ -206,16 +205,16 @@ impl VirtualMachine {
                         None => self.stack.push(Value::None),
                     },
                     None => {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     }
                     Some(_) => {
                         // TODO: Add value to error message...
-                        err!(self, "Unexpected value.");
+                        err!(self, "Unexpected value.", ip, opcode);
                     }
                 },
                 Opcode::Pop => {
                     if self.stack.pop().is_none() {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     }
                 }
                 Opcode::NewTable => {
@@ -227,28 +226,28 @@ impl VirtualMachine {
                         if let Value::Term(term) = value {
                             term
                         } else {
-                            err!(self, "TypeError: Expected term.");
+                            err!(self, "TypeError: Expected term.", ip, opcode);
                         }
                     } else {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     };
                     let key = if let Some(value) = self.stack.pop() {
                         if let Value::Term(term) = value {
                             term
                         } else {
-                            err!(self, "TypeError: Expected term.");
+                            err!(self, "TypeError: Expected term.", ip, opcode);
                         }
                     } else {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     };
                     if let Some(table) = self.stack.last_mut() {
                         if let Value::Table(table) = table {
                             table.insert(key, value);
                         } else {
-                            err!(self, "Expected table.");
+                            err!(self, "Expected table.", ip, opcode);
                         }
                     } else {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     };
                 }
                 Opcode::GetTable => {
@@ -256,10 +255,10 @@ impl VirtualMachine {
                         if let Value::Term(term) = value {
                             term
                         } else {
-                            err!(self, "TypeError: Expected Term.");
+                            err!(self, "TypeError: Expected Term.", ip, opcode);
                         }
                     } else {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     };
                     if let Some(table) = self.stack.last_mut() {
                         if let Value::Table(table) = table {
@@ -270,10 +269,10 @@ impl VirtualMachine {
                                 self.stack.push(Value::None);
                             }
                         } else {
-                            err!(self, "TypeError: Expected table.");
+                            err!(self, "TypeError: Expected table.", ip, opcode);
                         }
                     } else {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     };
                 }
                 Opcode::SetEnv => {
@@ -283,17 +282,17 @@ impl VirtualMachine {
                                 if let unification::Term::Variable(v) = term {
                                     v
                                 } else {
-                                    err!(self, "TypeError: Expected variable.");
+                                    err!(self, "TypeError: Expected variable.", ip, opcode);
                                 }
                             } else {
-                                err!(self, "TypeError: Expected variable.");
+                                err!(self, "TypeError: Expected variable.", ip, opcode);
                             }
                         } else {
-                            err!(self, "Stack underflow.");
+                            err!(self, "Stack underflow.", ip, opcode);
                         };
                         self.env.insert(key, value);
                     } else {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     };
                 }
                 Opcode::GetEnv => {
@@ -302,13 +301,13 @@ impl VirtualMachine {
                             if let unification::Term::Variable(v) = term {
                                 v
                             } else {
-                                err!(self, "TypeError: Expected variable.");
+                                err!(self, "TypeError: Expected variable.", ip, opcode);
                             }
                         } else {
-                            err!(self, "TypeError: Expected variable.");
+                            err!(self, "TypeError: Expected variable.", ip, opcode);
                         }
                     } else {
-                        err!(self, "Stack underflow.");
+                        err!(self, "Stack underflow.", ip, opcode);
                     };
                     if let Some(value) = self.env.get(&key) {
                         match value {
@@ -328,8 +327,8 @@ impl VirtualMachine {
                                 return Err(RuntimeError {
                                     msg: "Accessing streams through variables is not implemented."
                                         .to_string(),
-                                    ip: self.ip,
-                                    opcode: self.instructions[self.ip].clone(),
+                                    ip: ip,
+                                    opcode: opcode.clone(),
                                 });
                             }
                             Value::Table(t) => {
@@ -355,19 +354,17 @@ impl VirtualMachine {
                         }
                     } else {
                         // TODO: include name in error message
-                        err!(self, "Undefined variable.");
+                        err!(self, "Undefined variable.", ip, opcode);
                     }
                 }
             }
-            self.ip += 1;
+            ip += 1;
         }
         Ok(())
     }
 
     pub fn new() -> Self {
         Self {
-            instructions: Vec::new(),
-            ip: 0,
             next_id: 0,
             interned: HashMap::new(),
             stack: Vec::new(),
@@ -438,12 +435,13 @@ mod tests {
     #[test]
     fn unify() {
         let mut vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Atom(1));
-        vm.instructions.push(vm::Opcode::Atom(1));
-        vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::Next);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Atom(1));
+        instr.push(vm::Opcode::Atom(1));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert!(substs.is_empty());
         } else {
@@ -451,24 +449,26 @@ mod tests {
         }
 
         let mut vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Atom(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::Next);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Atom(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         match vm.stack.last() {
             Some(vm::Value::None) => {}
             _ => assert!(false),
         }
 
         let mut vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::Next);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(
                 substs.get(&unification::Term::Variable(1)).unwrap(),
@@ -482,16 +482,17 @@ mod tests {
     #[test]
     fn disj2() {
         let mut vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(1));
-        vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Disj2);
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::Next);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(1));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::Disj2);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(
                 substs.get(&unification::Term::Variable(1)).unwrap(),
@@ -505,16 +506,17 @@ mod tests {
     #[test]
     fn conj2() {
         let mut vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(1));
-        vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Variable(2));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::Conj2);
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::Next);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(1));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::Variable(2));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::Conj2);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(
                 substs.get(&unification::Term::Variable(1)).unwrap(),
@@ -529,8 +531,9 @@ mod tests {
     fn table() {
         // Test NewTable.
         let mut vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::NewTable);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::NewTable);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(table)) = vm.stack.last() {
             assert_eq!(table.len(), 0);
         } else {
@@ -539,11 +542,12 @@ mod tests {
 
         // Test SetTable.
         vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::NewTable);
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::SetTable);
-        assert!(vm.run().is_ok());
+        instr = Vec::new();
+        instr.push(vm::Opcode::NewTable);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::SetTable);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         assert_eq!(vm.stack.len(), 1);
         if let Some(vm::Value::Table(table)) = vm.stack.last() {
             assert_eq!(table.len(), 1);
@@ -557,13 +561,14 @@ mod tests {
 
         // Test GetTable.
         vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::NewTable);
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::SetTable);
-        vm.instructions.push(vm::Opcode::Variable(2));
-        vm.instructions.push(vm::Opcode::GetTable);
-        assert!(vm.run().is_ok());
+        instr = Vec::new();
+        instr.push(vm::Opcode::NewTable);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::SetTable);
+        instr.push(vm::Opcode::Variable(2));
+        instr.push(vm::Opcode::GetTable);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         assert_eq!(vm.stack.len(), 2);
         if let Some(vm::Value::None) = vm.stack.last() {
             // Ok.
@@ -572,13 +577,14 @@ mod tests {
         }
 
         vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::NewTable);
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::SetTable);
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::GetTable);
-        assert!(vm.run().is_ok());
+        instr = Vec::new();
+        instr.push(vm::Opcode::NewTable);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::SetTable);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::GetTable);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         assert_eq!(vm.stack.len(), 2);
         if let Some(vm::Value::Term(unification::Term::Atom(2))) = vm.stack.last() {
             // Ok.
@@ -590,20 +596,22 @@ mod tests {
     #[test]
     fn env() {
         let mut vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::SetEnv);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::SetEnv);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         assert_eq!(vm.stack.len(), 0);
 
         // Terms
         vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::SetEnv);
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::GetEnv);
-        assert!(vm.run().is_ok());
+        instr = Vec::new();
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::SetEnv);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::GetEnv);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         assert_eq!(vm.stack.len(), 1);
         if let Some(vm::Value::Term(unification::Term::Atom(2))) = vm.stack.last() {
             // Ok.
@@ -613,14 +621,15 @@ mod tests {
 
         // Goals
         vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::SetEnv);
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::GetEnv);
-        assert!(vm.run().is_ok());
+        instr = Vec::new();
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::SetEnv);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::GetEnv);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         assert_eq!(vm.stack.len(), 1);
         if let Some(vm::Value::Goal(_)) = vm.stack.last() {
             // Ok.
@@ -630,25 +639,27 @@ mod tests {
 
         // Streams
         vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::Unify);
-        vm.instructions.push(vm::Opcode::NewTable);
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::SetEnv);
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::GetEnv);
-        assert!(!vm.run().is_ok());
+        instr = Vec::new();
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::NewTable);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::SetEnv);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::GetEnv);
+        assert!(!vm.run(Rc::new(instr)).is_ok());
 
         // Tables
         vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::NewTable);
-        vm.instructions.push(vm::Opcode::SetEnv);
-        vm.instructions.push(vm::Opcode::Variable(1));
-        vm.instructions.push(vm::Opcode::GetEnv);
-        assert!(vm.run().is_ok());
+        instr = Vec::new();
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::NewTable);
+        instr.push(vm::Opcode::SetEnv);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::GetEnv);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         assert_eq!(vm.stack.len(), 1);
         if let Some(vm::Value::Table(_)) = vm.stack.last() {
             // Ok.
@@ -658,9 +669,10 @@ mod tests {
 
         // Try to use atom as a variable name.
         vm = vm::VirtualMachine::new();
-        vm.instructions.push(vm::Opcode::Atom(1));
-        vm.instructions.push(vm::Opcode::Atom(2));
-        vm.instructions.push(vm::Opcode::SetEnv);
-        assert!(!vm.run().is_ok());
+        instr = Vec::new();
+        instr.push(vm::Opcode::Atom(1));
+        instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::SetEnv);
+        assert!(!vm.run(Rc::new(instr)).is_ok());
     }
 }

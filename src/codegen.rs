@@ -43,14 +43,19 @@ impl Context {
     }
 }
 
-pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result<(), SyntaxError> {
+pub fn generate(
+    ast: &AST,
+    ctx: &mut Context,
+    vm: &mut VirtualMachine,
+    instr: &mut Vec<Opcode>,
+) -> Result<(), SyntaxError> {
     match ast {
         AST::Conj(nodes) => {
             let mut first = true;
             for node in nodes.iter() {
-                generate(node, ctx, vm)?;
+                generate(node, ctx, vm, instr)?;
                 if !first {
-                    vm.instructions.push(Opcode::Conj2);
+                    instr.push(Opcode::Conj2);
                 } else {
                     first = false;
                 }
@@ -59,18 +64,18 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
         AST::Disj(nodes) => {
             let mut first = true;
             for node in nodes.iter() {
-                generate(node, ctx, vm)?;
+                generate(node, ctx, vm, instr)?;
                 if !first {
-                    vm.instructions.push(Opcode::Disj2);
+                    instr.push(Opcode::Disj2);
                 } else {
                     first = false;
                 }
             }
         }
         AST::Equals(left, right) => {
-            generate(left, ctx, vm)?;
-            generate(right, ctx, vm)?;
-            vm.instructions.push(Opcode::Unify);
+            generate(left, ctx, vm, instr)?;
+            generate(right, ctx, vm, instr)?;
+            instr.push(Opcode::Unify);
         }
         AST::Var(declarations, body) => {
             ctx.push();
@@ -82,36 +87,36 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
                     unreachable!()
                 }
             }
-            generate(body, ctx, vm)?;
+            generate(body, ctx, vm, instr)?;
             ctx.pop();
         }
         AST::Atom(s) => {
             if let Some(id) = ctx.lookup(s) {
-                vm.instructions.push(Opcode::Atom(id));
+                instr.push(Opcode::Atom(id));
             } else {
                 let id = vm.intern(s);
                 ctx.insert(id, s);
-                vm.instructions.push(Opcode::Atom(id));
+                instr.push(Opcode::Atom(id));
             }
         }
         AST::Variable(v) => {
             if let Some(id) = ctx.lookup(v) {
-                vm.instructions.push(Opcode::Variable(id));
+                instr.push(Opcode::Variable(id));
             } else {
                 let id = vm.intern(v);
                 ctx.insert(id, v);
-                vm.instructions.push(Opcode::Variable(id));
+                instr.push(Opcode::Variable(id));
             }
         }
         AST::FnCall(name, args, offset) => {
             for arg in args {
-                generate(arg, ctx, vm)?;
+                generate(arg, ctx, vm, instr)?;
             }
             // So far, we just have two builtin functions...
             if name == "solve" {
-                vm.instructions.push(Opcode::Solve);
+                instr.push(Opcode::Solve);
             } else if name == "next" {
-                vm.instructions.push(Opcode::Next);
+                instr.push(Opcode::Next);
             } else {
                 let msg = "Undefined function: ".to_string() + name;
                 return Err(SyntaxError {
@@ -122,40 +127,40 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
         }
         AST::Program(statements) => {
             for statement in statements {
-                generate(statement, ctx, vm)?;
+                generate(statement, ctx, vm, instr)?;
             }
         }
         AST::Table(fields) => {
-            vm.instructions.push(Opcode::NewTable);
+            instr.push(Opcode::NewTable);
             let mut gen_set_table = false;
             for field in fields {
-                generate(field, ctx, vm)?;
+                generate(field, ctx, vm, instr)?;
                 if gen_set_table {
-                    vm.instructions.push(Opcode::SetTable);
+                    instr.push(Opcode::SetTable);
                 }
                 gen_set_table = !gen_set_table;
             }
         }
         AST::LetBinding(name, value) => {
             if let Some(id) = ctx.lookup(name) {
-                vm.instructions.push(Opcode::Variable(id));
+                instr.push(Opcode::Variable(id));
             } else {
                 let id = vm.intern(name);
                 ctx.insert(id, name);
-                vm.instructions.push(Opcode::Variable(id));
+                instr.push(Opcode::Variable(id));
             }
-            generate(value, ctx, vm)?;
-            vm.instructions.push(Opcode::SetEnv);
+            generate(value, ctx, vm, instr)?;
+            instr.push(Opcode::SetEnv);
         }
         AST::BindingRef(name) => {
             if let Some(id) = ctx.lookup(name) {
-                vm.instructions.push(Opcode::Variable(id));
+                instr.push(Opcode::Variable(id));
             } else {
                 let id = vm.intern(name);
                 ctx.insert(id, name);
-                vm.instructions.push(Opcode::Variable(id));
+                instr.push(Opcode::Variable(id));
             }
-            vm.instructions.push(Opcode::GetEnv);
+            instr.push(Opcode::GetEnv);
         }
         AST::Relation(parameters, body) => {
             todo!("Code generation for relations");
@@ -168,12 +173,13 @@ pub fn generate(ast: &AST, ctx: &mut Context, vm: &mut VirtualMachine) -> Result
 #[cfg(test)]
 mod tests {
     use crate::{codegen, parser, tokenizer, unification::Term, vm};
+    use std::rc::Rc;
 
     macro_rules! generate {
-        ($input:expr, $ctx: expr, $vm:expr) => {{
+        ($input:expr, $ctx: expr, $vm: expr, $instr: expr) => {{
             match tokenizer::scan($input) {
                 Ok(tokens) => match parser::parse(tokens) {
-                    Ok(ast) => match codegen::generate(&ast, $ctx, $vm) {
+                    Ok(ast) => match codegen::generate(&ast, $ctx, $vm, $instr) {
                         Ok(()) => {}
                         Err(err) => assert_eq!("code generation failed", err.msg),
                     },
@@ -188,10 +194,16 @@ mod tests {
     fn conj() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
-        generate!("conj {'olive == 'olive, 'oil == 'oil }", &mut ctx, &mut vm);
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::Next);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        generate!(
+            "conj {'olive == 'olive, 'oil == 'oil }",
+            &mut ctx,
+            &mut vm,
+            &mut instr
+        );
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         for v in &vm.stack {
             println!("{}", v);
         }
@@ -206,14 +218,16 @@ mod tests {
     fn disj() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
+        let mut instr = Vec::new();
         generate!(
             "disj {'olive == 'olive| 'olive == 'oil }",
             &mut ctx,
-            &mut vm
+            &mut vm,
+            &mut instr
         );
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::Next);
-        assert!(vm.run().is_ok());
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert!(substs.is_empty());
         } else {
@@ -225,10 +239,11 @@ mod tests {
     fn unify() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
-        generate!("'olive == 'olive", &mut ctx, &mut vm);
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::Next);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        generate!("'olive == 'olive", &mut ctx, &mut vm, &mut instr);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert!(substs.is_empty());
         } else {
@@ -240,10 +255,11 @@ mod tests {
     fn var() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
-        generate!("var (q) { q == 'olive }", &mut ctx, &mut vm);
-        vm.instructions.push(vm::Opcode::Solve);
-        vm.instructions.push(vm::Opcode::Next);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        generate!("var (q) { q == 'olive }", &mut ctx, &mut vm, &mut instr);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);
             assert_eq!(substs.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
@@ -258,8 +274,14 @@ mod tests {
     fn fncall() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
-        generate!("next(solve(var (q) { q == 'olive }))", &mut ctx, &mut vm);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        generate!(
+            "next(solve(var (q) { q == 'olive }))",
+            &mut ctx,
+            &mut vm,
+            &mut instr
+        );
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);
             assert_eq!(substs.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
@@ -270,8 +292,14 @@ mod tests {
         }
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
-        generate!("next(solve('apple == 'orange))", &mut ctx, &mut vm);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        generate!(
+            "next(solve('apple == 'orange))",
+            &mut ctx,
+            &mut vm,
+            &mut instr
+        );
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::None) = vm.stack.last() {
             // Ok.
         } else {
@@ -283,12 +311,14 @@ mod tests {
     fn program() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
+        let mut instr = Vec::new();
         generate!(
             "next(solve(var (q) { q == 'olive }))\nnext(solve(var (q) { q == 'oil }))",
             &mut ctx,
-            &mut vm
+            &mut vm,
+            &mut instr
         );
-        assert!(vm.run().is_ok());
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.pop() {
             assert_eq!(substs.len(), 1);
             assert_eq!(substs.get(&Term::Variable(3)).unwrap(), &Term::Atom(4));
@@ -312,8 +342,9 @@ mod tests {
     fn table() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
-        generate!("{x: 'olive, y: 'oil}", &mut ctx, &mut vm);
-        assert!(vm.run().is_ok());
+        let mut instr = Vec::new();
+        generate!("{x: 'olive, y: 'oil}", &mut ctx, &mut vm, &mut instr);
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(table)) = vm.stack.last() {
             assert_eq!(table.len(), 2);
             assert_eq!(table.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
@@ -331,12 +362,14 @@ mod tests {
     fn letbindings() {
         let mut ctx = codegen::Context::new();
         let mut vm = vm::VirtualMachine::new();
+        let mut instr = Vec::new();
         generate!(
             "let x = {x: 'olive, y: 'oil}\nlet y = 'banana == 'apple\nlet z = solve('banana == 'banana) x y",
             &mut ctx,
-            &mut vm
+            &mut vm,
+            &mut instr
         );
-        assert!(vm.run().is_ok());
+        assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Goal(_)) = vm.stack.pop() {
             // Ok.
         } else {
