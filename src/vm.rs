@@ -125,6 +125,16 @@ pub struct VirtualMachine {
     pub env: HashMap<u64, Value>,
 }
 
+macro_rules! err {
+    ($vm: expr, $msg: expr) => {{
+        return Err(RuntimeError {
+            msg: $msg.to_string(),
+            ip: $vm.ip,
+            opcode: $vm.instructions[$vm.ip].clone(),
+        });
+    }};
+}
+
 macro_rules! buildgoal {
     ($vm:expr, $type:tt, $goal:tt) => {{
         match $vm.stack.pop() {
@@ -134,33 +144,17 @@ macro_rules! buildgoal {
                         .push(Value::Goal(Rc::new(logic::$goal::new(left, right))));
                 }
                 None => {
-                    return Err(RuntimeError {
-                        msg: "Stack underflow.".to_string(),
-                        ip: $vm.ip,
-                        opcode: $vm.instructions[$vm.ip].clone(),
-                    });
+                    err!($vm, "Stack underflow.");
                 }
                 _ => {
-                    return Err(RuntimeError {
-                        msg: "Expected term.".to_string(),
-                        ip: $vm.ip,
-                        opcode: $vm.instructions[$vm.ip].clone(),
-                    });
+                    err!($vm, "Expected term.");
                 }
             },
             None => {
-                return Err(RuntimeError {
-                    msg: "Stack underflow.".to_string(),
-                    ip: $vm.ip,
-                    opcode: $vm.instructions[$vm.ip].clone(),
-                });
+                err!($vm, "Stack underflow.");
             }
             _ => {
-                return Err(RuntimeError {
-                    msg: "Expected term.".to_string(),
-                    ip: $vm.ip,
-                    opcode: $vm.instructions[$vm.ip].clone(),
-                });
+                err!($vm, "Expected term.");
             }
         }
     }};
@@ -193,18 +187,10 @@ impl VirtualMachine {
                         self.stack.push(Value::Stream(goal.solve(&substs)));
                     }
                     None => {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     }
                     _ => {
-                        return Err(RuntimeError {
-                            msg: "TypeError: Expected goal.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "TypeError: Expected goal.");
                     }
                 },
                 Opcode::Next => match self.stack.pop() {
@@ -220,28 +206,16 @@ impl VirtualMachine {
                         None => self.stack.push(Value::None),
                     },
                     None => {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     }
-                    Some(v) => {
-                        println!("weird value {}", v);
-                        return Err(RuntimeError {
-                            msg: "Unexpected value.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                    Some(_) => {
+                        // TODO: Add value to error message...
+                        err!(self, "Unexpected value.");
                     }
                 },
                 Opcode::Pop => {
                     if self.stack.pop().is_none() {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     }
                 }
                 Opcode::NewTable => {
@@ -253,52 +227,28 @@ impl VirtualMachine {
                         if let Value::Term(term) = value {
                             term
                         } else {
-                            return Err(RuntimeError {
-                                msg: "TypeError: Expected term.".to_string(),
-                                ip: self.ip,
-                                opcode: self.instructions[self.ip].clone(),
-                            });
+                            err!(self, "TypeError: Expected term.");
                         }
                     } else {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     };
                     let key = if let Some(value) = self.stack.pop() {
                         if let Value::Term(term) = value {
                             term
                         } else {
-                            return Err(RuntimeError {
-                                msg: "TypeError: Expected term.".to_string(),
-                                ip: self.ip,
-                                opcode: self.instructions[self.ip].clone(),
-                            });
+                            err!(self, "TypeError: Expected term.");
                         }
                     } else {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     };
                     if let Some(table) = self.stack.last_mut() {
                         if let Value::Table(table) = table {
                             table.insert(key, value);
                         } else {
-                            return Err(RuntimeError {
-                                msg: "TypeError: Expected table.".to_string(),
-                                ip: self.ip,
-                                opcode: self.instructions[self.ip].clone(),
-                            });
+                            err!(self, "Expected table.");
                         }
                     } else {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     };
                 }
                 Opcode::GetTable => {
@@ -306,18 +256,10 @@ impl VirtualMachine {
                         if let Value::Term(term) = value {
                             term
                         } else {
-                            return Err(RuntimeError {
-                                msg: "TypeError: Expected term.".to_string(),
-                                ip: self.ip,
-                                opcode: self.instructions[self.ip].clone(),
-                            });
+                            err!(self, "TypeError: Expected Term.");
                         }
                     } else {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     };
                     if let Some(table) = self.stack.last_mut() {
                         if let Value::Table(table) = table {
@@ -328,18 +270,10 @@ impl VirtualMachine {
                                 self.stack.push(Value::None);
                             }
                         } else {
-                            return Err(RuntimeError {
-                                msg: "TypeError: Expected table.".to_string(),
-                                ip: self.ip,
-                                opcode: self.instructions[self.ip].clone(),
-                            });
+                            err!(self, "TypeError: Expected table.");
                         }
                     } else {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     };
                 }
                 Opcode::SetEnv => {
@@ -349,33 +283,17 @@ impl VirtualMachine {
                                 if let unification::Term::Variable(v) = term {
                                     v
                                 } else {
-                                    return Err(RuntimeError {
-                                        msg: "TypeError: Expected variable.".to_string(),
-                                        ip: self.ip,
-                                        opcode: self.instructions[self.ip].clone(),
-                                    });
+                                    err!(self, "TypeError: Expected variable.");
                                 }
                             } else {
-                                return Err(RuntimeError {
-                                    msg: "TypeError: Expected variable.".to_string(),
-                                    ip: self.ip,
-                                    opcode: self.instructions[self.ip].clone(),
-                                });
+                                err!(self, "TypeError: Expected variable.");
                             }
                         } else {
-                            return Err(RuntimeError {
-                                msg: "Stack underflow.".to_string(),
-                                ip: self.ip,
-                                opcode: self.instructions[self.ip].clone(),
-                            });
+                            err!(self, "Stack underflow.");
                         };
                         self.env.insert(key, value);
                     } else {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     };
                 }
                 Opcode::GetEnv => {
@@ -384,25 +302,13 @@ impl VirtualMachine {
                             if let unification::Term::Variable(v) = term {
                                 v
                             } else {
-                                return Err(RuntimeError {
-                                    msg: "TypeError: Expected variable.".to_string(),
-                                    ip: self.ip,
-                                    opcode: self.instructions[self.ip].clone(),
-                                });
+                                err!(self, "TypeError: Expected variable.");
                             }
                         } else {
-                            return Err(RuntimeError {
-                                msg: "TypeError: Expected variable.".to_string(),
-                                ip: self.ip,
-                                opcode: self.instructions[self.ip].clone(),
-                            });
+                            err!(self, "TypeError: Expected variable.");
                         }
                     } else {
-                        return Err(RuntimeError {
-                            msg: "Stack underflow.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        err!(self, "Stack underflow.");
                     };
                     if let Some(value) = self.env.get(&key) {
                         match value {
@@ -448,12 +354,8 @@ impl VirtualMachine {
                             }
                         }
                     } else {
-                        return Err(RuntimeError {
-                            // TODO: include name in error message
-                            msg: "Undefined variable.".to_string(),
-                            ip: self.ip,
-                            opcode: self.instructions[self.ip].clone(),
-                        });
+                        // TODO: include name in error message
+                        err!(self, "Undefined variable.");
                     }
                 }
             }
