@@ -52,12 +52,14 @@ pub enum Opcode {
 
 #[derive(Clone, Copy)]
 pub enum CallableKind {
+    Function,
     Relation,
 }
 
 impl fmt::Display for CallableKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            CallableKind::Function => write!(f, "function"),
             CallableKind::Relation => write!(f, "relation"),
         }
     }
@@ -116,6 +118,7 @@ pub struct VirtualMachine {
     pub interned: HashMap<u64, String>,
 
     pub stack: Vec<Value>,
+    pub callstack: Vec<(usize, Rc<Vec<Opcode>>)>,
 
     // Because we don't currently support user functions, all let bindings
     // occur at global scope.
@@ -168,9 +171,16 @@ impl VirtualMachine {
     }
 
     pub fn run(&mut self, instr: Rc<Vec<Opcode>>) -> Result<(), RuntimeError> {
-        let mut ip = 0;
-        while ip < instr.len() {
-            match &instr[ip] {
+        self.callstack.push((0, instr));
+
+        loop {
+            let (ip, opcode) = match self.callstack.last_mut() {
+                Some((ip, instr)) => (*ip, &instr[*ip]),
+                None => {
+                    return Ok(());
+                }
+            };
+            match opcode {
                 Opcode::Atom(atom) => self.stack.push(Value::Term(unification::Term::Atom(*atom))),
                 Opcode::Variable(var) => self
                     .stack
@@ -355,9 +365,17 @@ impl VirtualMachine {
                     }
                 }
             }
-            ip += 1;
+            match self.callstack.last_mut() {
+                Some((ip, instr)) => {
+                    *ip += 1;
+                    // Implicit return if we hit the end of the buffer.
+                    if *ip == instr.len() {
+                        self.callstack.pop();
+                    }
+                }
+                None => unreachable!("Empty callstack at bottom of interpreter loop."),
+            };
         }
-        Ok(())
     }
 
     pub fn new() -> Self {
@@ -365,6 +383,7 @@ impl VirtualMachine {
             next_id: 0,
             interned: HashMap::new(),
             stack: Vec::new(),
+            callstack: Vec::new(),
             env: HashMap::new(),
         }
     }
