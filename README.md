@@ -1,4 +1,4 @@
-![tern logo](tern-logo-small.png)
+<img src="tern-logo-small.png" style="background-color: white; border-radius: 50%">
 
 Tern
 ----
