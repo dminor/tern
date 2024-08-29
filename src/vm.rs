@@ -48,9 +48,14 @@ pub enum Opcode {
     // Get the value variable `name` in the environment.
     // name -> value
     GetEnv,
+    // Call the callable, passing n arguments to it.
+    // arg1 arg2 ... argn callable -> value
+    Call,
+    // Return from a call.
+    Ret,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum CallableKind {
     Function,
     Relation,
@@ -118,7 +123,7 @@ pub struct VirtualMachine {
     pub interned: HashMap<u64, String>,
 
     pub stack: Vec<Value>,
-    pub callstack: Vec<(usize, Rc<Vec<Opcode>>)>,
+    pub callstack: Vec<Value>,
 
     // Because we don't currently support user functions, all let bindings
     // occur at global scope.
@@ -171,13 +176,26 @@ impl VirtualMachine {
     }
 
     pub fn run(&mut self, instr: Rc<Vec<Opcode>>) -> Result<(), RuntimeError> {
-        self.callstack.push((0, instr));
+        self.callstack.push(Value::Callable {
+            kind: CallableKind::Function,
+            parameters: Rc::new(Vec::new()),
+            instructions: instr,
+            ip: 0,
+        });
 
         loop {
             let (ip, opcode) = match self.callstack.last_mut() {
-                Some((ip, instr)) => (*ip, &instr[*ip]),
+                Some(Value::Callable {
+                    kind: _,
+                    parameters: _,
+                    instructions,
+                    ip,
+                }) => (*ip, &instructions[*ip]),
                 None => {
                     return Ok(());
+                }
+                _ => {
+                    unreachable!("Callstack must only contain callables.");
                 }
             };
             match opcode {
@@ -364,16 +382,102 @@ impl VirtualMachine {
                         err!(self, "Undefined variable.", ip);
                     }
                 }
+                Opcode::Call => match self.stack.pop() {
+                    Some(Value::Callable {
+                        kind,
+                        parameters,
+                        instructions,
+                        ip,
+                    }) => {
+                        self.callstack.push(Value::Callable {
+                            kind,
+                            parameters,
+                            instructions,
+                            ip,
+                        });
+                        continue;
+                    }
+                    None => {
+                        err!(self, "Stack underflow.", ip);
+                    }
+                    _ => {
+                        err!(self, "TypeError: Expected callable.", ip);
+                    }
+                },
+                Opcode::Ret => {
+                    match self.callstack.pop() {
+                        Some(Value::Callable {
+                            kind,
+                            parameters,
+                            instructions,
+                            ip,
+                        }) => {
+                            if kind == CallableKind::Relation {
+                                // The relation should have pushed a Goal to the stack.
+                                match self.stack.pop() {
+                                    Some(Value::Goal(goal)) => {
+                                        // Create a series of Conj that bind each parameter to argument using unify.
+                                        let mut result = goal;
+                                        for parameter in parameters.iter().rev() {
+                                            match self.stack.pop() {
+                                                Some(Value::Term(term)) => {
+                                                    result = Rc::new(logic::Conj2::new(
+                                                        Rc::new(logic::Unify::new(
+                                                            unification::Term::Variable(*parameter),
+                                                            term,
+                                                        )),
+                                                        result,
+                                                    ));
+                                                }
+                                                Some(_) => {
+                                                    // TODO: include type in message.
+                                                    err!(self, "TypeError: Expected term as argument to relation.", ip);
+                                                }
+                                                None => {
+                                                    err!(self, "Stack underflow.", ip);
+                                                }
+                                            }
+                                        }
+                                        self.stack.push(Value::Goal(result));
+                                    }
+                                    Some(_) => {
+                                        // TODO: include type in message.
+                                        err!(
+                                            self,
+                                            "TypeError: Unexpected type returned from relation.",
+                                            ip
+                                        );
+                                    }
+                                    None => {
+                                        err!(self, "Stack underflow.", ip);
+                                    }
+                                }
+                            }
+                        }
+                        None => {
+                            err!(self, "Call stack underflow.", ip);
+                        }
+                        _ => {
+                            err!(self, "TypeError: Expected callable.", ip);
+                        }
+                    }
+                }
             }
             match self.callstack.last_mut() {
-                Some((ip, instr)) => {
+                Some(Value::Callable {
+                    kind: _,
+                    parameters: _,
+                    instructions,
+                    ip,
+                }) => {
                     *ip += 1;
                     // Implicit return if we hit the end of the buffer.
-                    if *ip == instr.len() {
+                    if *ip == instructions.len() {
                         self.callstack.pop();
                     }
                 }
                 None => unreachable!("Empty callstack at bottom of interpreter loop."),
+                _ => unreachable!("Callstack must only contain callables."),
             };
         }
     }
@@ -690,5 +794,60 @@ mod tests {
         instr.push(vm::Opcode::Atom(2));
         instr.push(vm::Opcode::SetEnv);
         assert!(!vm.run(Rc::new(instr)).is_ok());
+    }
+
+    #[test]
+    fn callable() {
+        let mut vm = vm::VirtualMachine::new();
+        vm.stack.push(vm::Value::Callable {
+            kind: vm::CallableKind::Relation,
+            parameters: Rc::new(Vec::new()),
+            instructions: Rc::new(vec![
+                vm::Opcode::Atom(1),
+                vm::Opcode::Atom(1),
+                vm::Opcode::Unify,
+                vm::Opcode::Ret,
+            ]),
+            ip: 0,
+        });
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Call);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
+        assert_eq!(vm.stack.len(), 2);
+        if let Some(vm::Value::Table(substs)) = vm.stack.last() {
+            assert!(substs.is_empty());
+        } else {
+            assert!(false);
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        vm.stack.push(vm::Value::Term(unification::Term::Variable(1)));
+        vm.stack.push(vm::Value::Callable {
+            kind: vm::CallableKind::Relation,
+            parameters: Rc::new(vec![1]),
+            instructions: Rc::new(vec![
+                vm::Opcode::Variable(1),
+                vm::Opcode::Atom(2),
+                vm::Opcode::Unify,
+                vm::Opcode::Ret,
+            ]),
+            ip: 0,
+        });
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Call);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
+        assert_eq!(vm.stack.len(), 2);
+        if let Some(vm::Value::Table(substs)) = vm.stack.last() {
+            assert_eq!(
+                substs.get(&unification::Term::Variable(1)).unwrap(),
+                &unification::Term::Atom(2)
+            );
+        } else {
+            assert!(false);
+        }
     }
 }
