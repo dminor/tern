@@ -164,18 +164,21 @@ pub fn generate(
             instr.push(Opcode::GetEnv);
         }
         AST::Relation(parameters, body) => {
+            ctx.push();
             let mut params = vec![];
             for parameter in parameters {
                 match parameter {
-                    AST::Variable(p) => {
-                        let id = vm.intern(p);
+                    AST::Variable(name) => {
+                        let id = vm.intern(name);
                         params.push(id);
+                        ctx.insert(id, name);
                     }
                     _ => unreachable!("Relation parameters must only include variables"),
                 }
             }
             let mut body_instr = vec![];
             generate(body, ctx, vm, &mut body_instr)?;
+            ctx.pop();
             instr.push(Opcode::Callable {
                 kind: CallableKind::Relation,
                 parameters: Rc::new(params),
