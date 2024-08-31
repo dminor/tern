@@ -17,7 +17,7 @@ Syntax
     statement  -> comment | letbinding | expression
     comment    -> "#" .* "\n"
     letbinding -> "let" variable "=" expression
-    expression -> table | relation | fncall | letref | goal
+    expression -> table | relation | fncall | letref | goal | term
     table      -> "{" (term ":" term "," )* "}"
     relation   -> "rel" varlist "{" goal "}"
     fncall     -> variable  "(" ((expression ",")* expression)? ")"

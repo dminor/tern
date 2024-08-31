@@ -220,6 +220,18 @@ fn expression(
                     Ok(AST::BindingRef(name))
                 }
             }
+            TokenKind::Tick => {
+                let left = term(state, tokens)?;
+                if let Some(token) = tokens.peek() {
+                    if token.kind == TokenKind::DoubleEquals {
+                        equals(state, tokens, Some(left))
+                    } else {
+                        Ok(left)
+                    }
+                } else {
+                    Ok(left)
+                }
+            }
             _ => goal(state, tokens),
         }
     } else {
@@ -385,7 +397,7 @@ fn goal(
                     })
                 }
             }
-            TokenKind::Tick | TokenKind::Literal(_) => equals(state, tokens),
+            TokenKind::Tick | TokenKind::Literal(_) => equals(state, tokens, None),
             TokenKind::Var => {
                 state.offset = token.offset;
                 tokens.next();
@@ -492,8 +504,13 @@ fn disj(
 fn equals(
     state: &mut ParseState,
     tokens: &mut Peekable<std::vec::IntoIter<Token>>,
+    left: Option<AST>,
 ) -> Result<AST, SyntaxError> {
-    let left = term(state, tokens)?;
+    let left = if let Some(left) = left {
+        left
+    } else {
+        term(state, tokens)?
+    };
     if let Some(token) = tokens.next() {
         if token.kind == TokenKind::DoubleEquals {
             state.offset = token.offset;
@@ -810,8 +827,8 @@ mod tests {
             "Unexpected end of input while parsing term.",
             7
         );
-        parsefails!("'olive", "Unexpected end of input while parsing equals.", 5);
-        parsefails!("'olive 'oil", "Expected `==` while parsing equals.", 5);
+        parse!("'olive", "'olive");
+        parse!("'olive 'oil", "'olive'oil");
         parse!(
             "conj { 'red == 'red , 'bean == 'bean }",
             "conj { 'red == 'red , 'bean == 'bean }"
