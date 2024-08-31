@@ -119,11 +119,19 @@ pub fn generate(
             } else if name == "next" {
                 instr.push(Opcode::Next);
             } else {
-                let msg = "Undefined function: ".to_string() + name;
-                return Err(SyntaxError {
-                    msg,
-                    offset: *offset,
-                });
+                // TODO: We're requiring functions to be defined before use here,
+                // is this the behaviour we want?
+                if let Some(id) = ctx.lookup(name) {
+                    instr.push(Opcode::Variable(id));
+                    instr.push(Opcode::GetEnv);
+                    instr.push(Opcode::Call);
+                } else {
+                    let msg = "Undefined function: ".to_string() + name;
+                    return Err(SyntaxError {
+                        msg,
+                        offset: *offset,
+                    });
+                }
             }
         }
         AST::Program(statements) => {
@@ -178,6 +186,7 @@ pub fn generate(
             }
             let mut body_instr = vec![];
             generate(body, ctx, vm, &mut body_instr)?;
+            body_instr.push(Opcode::Ret);
             ctx.pop();
             instr.push(Opcode::Callable {
                 kind: CallableKind::Relation,

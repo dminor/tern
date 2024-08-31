@@ -197,7 +197,15 @@ impl VirtualMachine {
                     parameters: _,
                     instructions,
                     ip,
-                }) => (*ip, &instructions[*ip]),
+                }) => {
+                    // Implicit return if we run out of instructions.
+                    // TODO: We should explicitly return from all code.
+                    if *ip >= instructions.len() {
+                        self.callstack.pop();
+                        continue;
+                    }
+                    (*ip, &instructions[*ip])
+                }
                 None => {
                     return Ok(());
                 }
@@ -416,7 +424,7 @@ impl VirtualMachine {
                         Some(Value::Callable {
                             kind,
                             parameters,
-                            instructions,
+                            instructions: _,
                             ip,
                         }) => {
                             if kind == CallableKind::Relation {
@@ -462,11 +470,11 @@ impl VirtualMachine {
                             }
                         }
                         None => {
-                            err!(self, "Call stack underflow.", ip);
+                            return Ok(());
                         }
-                        _ => {
-                            err!(self, "TypeError: Expected callable.", ip);
-                        }
+                        _ => unreachable!(
+                            "Callstack must only contain callables while handling `ret`."
+                        ),
                     }
                 }
                 Opcode::Callable {
@@ -487,16 +495,14 @@ impl VirtualMachine {
                 Some(Value::Callable {
                     kind: _,
                     parameters: _,
-                    instructions,
+                    instructions: _,
                     ip,
                 }) => {
                     *ip += 1;
-                    // Implicit return if we hit the end of the buffer.
-                    if *ip == instructions.len() {
-                        self.callstack.pop();
-                    }
                 }
-                None => unreachable!("Empty callstack at bottom of interpreter loop."),
+                None => {
+                    return Ok(());
+                }
                 _ => unreachable!("Callstack must only contain callables."),
             };
         }

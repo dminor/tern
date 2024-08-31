@@ -6,7 +6,7 @@ mod tokenizer;
 mod unification;
 mod vm;
 
-use std::cmp::max;
+use std::cmp::{max, min};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -96,8 +96,13 @@ fn eval(filename: &str, src: &str, ctx: &mut codegen::Context, vm: &mut vm::Virt
                                 println!("RuntimeError: {}", err.msg);
                                 println!("Instructions:");
                                 let start_ip = max(0, err.ip as i64 - 10) as usize;
-                                for ip in start_ip..err.ip + 1 {
-                                    println!("{:04}| {:?}", ip, instr[ip]);
+                                let end_ip = min(instr.len(), err.ip + 10);
+                                for ip in start_ip..end_ip {
+                                    if ip == err.ip {
+                                        println!("{:04}| {:?}        <----- error", ip, instr[ip]);
+                                    } else {
+                                        println!("{:04}| {:?}", ip, instr[ip]);
+                                    }
                                 }
                                 if vm.stack.is_empty() {
                                     println!("Empty stack.");
