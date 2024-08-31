@@ -1,7 +1,8 @@
 use crate::errors::SyntaxError;
 use crate::parser::AST;
-use crate::vm::{Opcode, VirtualMachine};
+use crate::vm::{CallableKind, Opcode, VirtualMachine};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 pub struct Context {
     pub bindings: Vec<HashMap<String, u64>>,
@@ -163,7 +164,24 @@ pub fn generate(
             instr.push(Opcode::GetEnv);
         }
         AST::Relation(parameters, body) => {
-            todo!("Code generation for relations");
+            let mut params = vec![];
+            for parameter in parameters {
+                match parameter {
+                    AST::Variable(p) => {
+                        let id = vm.intern(p);
+                        params.push(id);
+                    }
+                    _ => unreachable!("Relation parameters must only include variables"),
+                }
+            }
+            let mut body_instr = vec![];
+            generate(body, ctx, vm, &mut body_instr)?;
+            instr.push(Opcode::Callable {
+                kind: CallableKind::Relation,
+                parameters: Rc::new(params),
+                instructions: Rc::new(body_instr),
+                ip: 0,
+            })
         }
     }
 
@@ -204,9 +222,6 @@ mod tests {
         instr.push(vm::Opcode::Solve);
         instr.push(vm::Opcode::Next);
         assert!(vm.run(Rc::new(instr)).is_ok());
-        for v in &vm.stack {
-            println!("{}", v);
-        }
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert!(substs.is_empty());
         } else {
@@ -387,5 +402,39 @@ mod tests {
             assert!(false);
         }
         // TODO: Add test for retrieving stream from let binding when we support it.
+    }
+
+    #[test]
+    fn callable() {
+        let mut ctx = codegen::Context::new();
+        let mut vm = vm::VirtualMachine::new();
+        let mut instr = Vec::new();
+        generate!(
+            "rel(x) {
+                disj {
+                    x == 'sarah |
+                    x == 'milcah |
+                    x == 'yiscah
+                }
+            }",
+            &mut ctx,
+            &mut vm,
+            &mut instr
+        );
+        assert!(vm.run(Rc::new(instr)).is_ok());
+        assert_eq!(vm.stack.len(), 1);
+        if let Some(vm::Value::Callable {
+            kind,
+            parameters,
+            instructions,
+            ip,
+        }) = vm.stack.last()
+        {
+            assert!(*kind == vm::CallableKind::Relation);
+            assert!(parameters.len() == 1);
+            assert!(*ip == 0);
+        } else {
+            assert!(false);
+        }
     }
 }

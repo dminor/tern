@@ -7,6 +7,12 @@ use std::rc::Rc;
 
 pub type AtomType = u64;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CallableKind {
+    Function,
+    Relation,
+}
+
 #[derive(Debug, Clone)]
 pub enum Opcode {
     // Push a new atom term to the stack.
@@ -53,12 +59,13 @@ pub enum Opcode {
     Call,
     // Return from a call.
     Ret,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum CallableKind {
-    Function,
-    Relation,
+    // Create a new callable
+    Callable {
+        kind: CallableKind,
+        parameters: Rc<Vec<u64>>,
+        instructions: Rc<Vec<Opcode>>,
+        ip: usize,
+    },
 }
 
 impl fmt::Display for CallableKind {
@@ -462,6 +469,19 @@ impl VirtualMachine {
                         }
                     }
                 }
+                Opcode::Callable {
+                    kind,
+                    parameters,
+                    instructions,
+                    ip,
+                } => {
+                    self.stack.push(Value::Callable {
+                        kind: *kind,
+                        parameters: parameters.clone(),
+                        instructions: instructions.clone(),
+                        ip: *ip,
+                    });
+                }
             }
             match self.callstack.last_mut() {
                 Some(Value::Callable {
@@ -799,7 +819,8 @@ mod tests {
     #[test]
     fn callable() {
         let mut vm = vm::VirtualMachine::new();
-        vm.stack.push(vm::Value::Callable {
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Callable {
             kind: vm::CallableKind::Relation,
             parameters: Rc::new(Vec::new()),
             instructions: Rc::new(vec![
@@ -810,7 +831,6 @@ mod tests {
             ]),
             ip: 0,
         });
-        let mut instr = Vec::new();
         instr.push(vm::Opcode::Call);
         instr.push(vm::Opcode::Solve);
         instr.push(vm::Opcode::Next);
@@ -823,7 +843,8 @@ mod tests {
         }
 
         let mut vm = vm::VirtualMachine::new();
-        vm.stack.push(vm::Value::Term(unification::Term::Variable(1)));
+        vm.stack
+            .push(vm::Value::Term(unification::Term::Variable(1)));
         vm.stack.push(vm::Value::Callable {
             kind: vm::CallableKind::Relation,
             parameters: Rc::new(vec![1]),
