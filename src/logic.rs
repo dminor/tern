@@ -404,6 +404,21 @@ mod tests {
         assert_eq!(iter.next(), None);
 
         let left = Rc::new(Unify {
+            left: Term::Atom("olive".to_string()),
+            right: Term::Variable(1),
+        });
+        let right = Rc::new(Unify {
+            left: Term::Atom("olive".to_string()),
+            right: Term::Variable(1),
+        });
+        let conj2 = Conj2::new(left, right);
+        let mut iter = conj2.solve(&substs);
+        let result = iter.next().unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(*result.get(&1).unwrap(), Term::Atom("olive".to_string()));
+        assert_eq!(iter.next(), None);
+
+        let left = Rc::new(Unify {
             left: Term::Variable(1),
             right: Term::Atom("olive".to_string()),
         });

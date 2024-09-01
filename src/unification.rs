@@ -88,7 +88,7 @@ pub fn unify<T: std::cmp::PartialEq + Clone>(
                     substs.insert(*var, left.clone());
                     true
                 } else {
-                    right == x
+                    left == x
                 }
             }
             Term::Tuple(_) => false,
