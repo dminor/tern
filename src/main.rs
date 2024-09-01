@@ -41,80 +41,93 @@ fn display_error(filename: &str, src: &str, err_type: &str, err_msg: &str, err_o
 }
 
 fn eval(filename: &str, src: &str, ctx: &mut codegen::Context, vm: &mut vm::VirtualMachine) {
+    vm.stack.clear();
+    vm.callstack.clear();
     match tokenizer::scan(src) {
         Ok(tokens) => match parser::parse(tokens) {
             Ok(ast) => {
                 let mut instr = Vec::new();
                 match codegen::generate(&ast, ctx, vm, &mut instr) {
-                    Ok(()) => {
-                        let instr = Rc::new(instr);
-                        match vm.run(instr.clone()) {
-                            Ok(()) => match vm.stack.pop() {
-                                Some(vm::Value::Table(substs)) => {
-                                    if substs.is_empty() {
-                                        println!("Ok.");
-                                    } else {
-                                        for subst in substs {
-                                            match subst.0 {
-                                                unification::Term::Atom(a)
-                                                | unification::Term::Variable(a) => {
-                                                    if let Some(interned) = vm.lookup_interned(&a) {
-                                                        print!("{}: ", interned);
-                                                    } else {
-                                                        print!("{}: ", a);
-                                                    }
-                                                }
-                                                _ => {
-                                                    println!("{:?}", subst.1);
+                    Ok(()) => match vm.run(Rc::new(instr)) {
+                        Ok(()) => match vm.stack.pop() {
+                            Some(vm::Value::Table(substs)) => {
+                                if substs.is_empty() {
+                                    println!("Ok.");
+                                } else {
+                                    for subst in substs {
+                                        match subst.0 {
+                                            unification::Term::Atom(a)
+                                            | unification::Term::Variable(a) => {
+                                                if let Some(interned) = vm.lookup_interned(&a) {
+                                                    print!("{}: ", interned);
+                                                } else {
+                                                    print!("{}: ", a);
                                                 }
                                             }
-                                            match subst.1 {
-                                                unification::Term::Atom(a)
-                                                | unification::Term::Variable(a) => {
-                                                    if let Some(interned) = vm.lookup_interned(&a) {
-                                                        println!("{}", interned);
-                                                    } else {
-                                                        println!("{}", a);
-                                                    }
+                                            _ => {
+                                                println!("{:?}", subst.1);
+                                            }
+                                        }
+                                        match subst.1 {
+                                            unification::Term::Atom(a)
+                                            | unification::Term::Variable(a) => {
+                                                if let Some(interned) = vm.lookup_interned(&a) {
+                                                    println!("{}", interned);
+                                                } else {
+                                                    println!("{}", a);
                                                 }
-                                                _ => {
-                                                    println!("{:?}", subst.1);
-                                                }
+                                            }
+                                            _ => {
+                                                println!("{:?}", subst.1);
                                             }
                                         }
                                     }
                                 }
-                                Some(vm::Value::None) => {
-                                    println!("No.");
-                                }
-                                Some(value) => {
-                                    println!("{}", value);
-                                }
-                                _ => {}
-                            },
-                            Err(err) => {
-                                println!("RuntimeError: {}", err.msg);
-                                println!("Instructions:");
-                                let start_ip = max(0, err.ip as i64 - 10) as usize;
-                                let end_ip = min(instr.len(), err.ip + 10);
-                                for ip in start_ip..end_ip {
-                                    if ip == err.ip {
-                                        println!("{:04}| {:?}        <----- error", ip, instr[ip]);
-                                    } else {
-                                        println!("{:04}| {:?}", ip, instr[ip]);
-                                    }
-                                }
-                                if vm.stack.is_empty() {
-                                    println!("Empty stack.");
-                                } else {
-                                    println!("Stack:");
-                                    for sp in 0..vm.stack.len() {
-                                        println!("{:04}| {}", sp, vm.stack[sp]);
+                            }
+                            Some(vm::Value::None) => {
+                                println!("No.");
+                            }
+                            Some(value) => {
+                                println!("{}", value);
+                            }
+                            _ => {}
+                        },
+                        Err(err) => {
+                            println!("RuntimeError: {}", err.msg);
+                            if vm.callstack.is_empty() {
+                                println!("Empty call stack.");
+                            } else {
+                                println!("Call stack:");
+                                for callable in vm.callstack.iter().rev() {
+                                    if let vm::Value::Callable {
+                                        kind,
+                                        parameters,
+                                        instructions,
+                                        ip: callable_ip,
+                                    } = callable
+                                    {
+                                        let start_ip = max(0, *callable_ip as i64 - 10) as usize;
+                                        let end_ip = min(instructions.len(), *callable_ip + 10);
+                                        for ip in start_ip..end_ip {
+                                            if ip == *callable_ip {
+                                                println!("->  {:04}| {:?}", ip, instructions[ip]);
+                                            } else {
+                                                println!("    {:04}| {:?}", ip, instructions[ip]);
+                                            }
+                                        }
                                     }
                                 }
                             }
+                            if vm.stack.is_empty() {
+                                println!("Empty stack.");
+                            } else {
+                                println!("Stack:");
+                                for sp in 0..vm.stack.len() {
+                                    println!("{:04}| {}", sp, vm.stack[sp]);
+                                }
+                            }
                         }
-                    }
+                    },
                     Err(err) => {
                         display_error(filename, src, "SyntaxError", &err.msg, err.offset);
                     }
