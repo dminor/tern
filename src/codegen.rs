@@ -82,7 +82,7 @@ pub fn generate(
             ctx.push();
             for declaration in declarations {
                 if let AST::Variable(v) = declaration {
-                    let id = vm.intern(v);
+                    let id = vm.new_variable(v);
                     ctx.insert(id, v);
                 } else {
                     unreachable!()
@@ -92,19 +92,13 @@ pub fn generate(
             ctx.pop();
         }
         AST::Atom(s) => {
-            if let Some(id) = ctx.lookup(s) {
-                instr.push(Opcode::Atom(id));
-            } else {
-                let id = vm.intern(s);
-                ctx.insert(id, s);
-                instr.push(Opcode::Atom(id));
-            }
+            instr.push(Opcode::Atom(vm.intern(s)));
         }
         AST::Variable(v) => {
             if let Some(id) = ctx.lookup(v) {
                 instr.push(Opcode::Variable(id));
             } else {
-                let id = vm.intern(v);
+                let id = vm.new_variable(v);
                 ctx.insert(id, v);
                 instr.push(Opcode::Variable(id));
             }
@@ -154,7 +148,7 @@ pub fn generate(
             if let Some(id) = ctx.lookup(name) {
                 instr.push(Opcode::Variable(id));
             } else {
-                let id = vm.intern(name);
+                let id = vm.new_variable(name);
                 ctx.insert(id, name);
                 instr.push(Opcode::Variable(id));
             }
@@ -165,7 +159,7 @@ pub fn generate(
             if let Some(id) = ctx.lookup(name) {
                 instr.push(Opcode::Variable(id));
             } else {
-                let id = vm.intern(name);
+                let id = vm.new_variable(name);
                 ctx.insert(id, name);
                 instr.push(Opcode::Variable(id));
             }
@@ -177,7 +171,7 @@ pub fn generate(
             for parameter in parameters {
                 match parameter {
                     AST::Variable(name) => {
-                        let id = vm.intern(name);
+                        let id = vm.new_variable(name);
                         params.push(id);
                         ctx.insert(id, name);
                     }
@@ -218,6 +212,12 @@ mod tests {
                 _ => assert!(false),
             }
         }};
+    }
+
+    fn dump_instructions(instr: &Vec<vm::Opcode>) {
+        for ip in 0..instr.len() {
+            println!("{:04}| {:?}", ip, instr[ip]);
+        }
     }
 
     #[test]
@@ -289,8 +289,8 @@ mod tests {
         assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);
-            assert_eq!(substs.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
-            assert_eq!(vm.lookup_interned(&1).unwrap(), "q");
+            assert_eq!(substs.get(&Term::Variable(0)).unwrap(), &Term::Atom(2));
+            assert_eq!(vm.lookup_variable(&0).unwrap(), "q");
             assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
         } else {
             assert!(false);
@@ -311,8 +311,8 @@ mod tests {
         assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(substs)) = vm.stack.last() {
             assert_eq!(substs.len(), 1);
-            assert_eq!(substs.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
-            assert_eq!(vm.lookup_interned(&1).unwrap(), "q");
+            assert_eq!(substs.get(&Term::Variable(0)).unwrap(), &Term::Atom(2));
+            assert_eq!(vm.lookup_variable(&0).unwrap(), "q");
             assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
         } else {
             assert!(false);
@@ -349,7 +349,7 @@ mod tests {
         if let Some(vm::Value::Table(substs)) = vm.stack.pop() {
             assert_eq!(substs.len(), 1);
             assert_eq!(substs.get(&Term::Variable(3)).unwrap(), &Term::Atom(4));
-            assert_eq!(vm.lookup_interned(&3).unwrap(), "q");
+            assert_eq!(vm.lookup_variable(&3).unwrap(), "q");
             assert_eq!(vm.lookup_interned(&4).unwrap(), "oil");
         } else {
             assert!(false);
@@ -357,8 +357,8 @@ mod tests {
         vm.stack.pop();
         if let Some(vm::Value::Table(substs)) = vm.stack.pop() {
             assert_eq!(substs.len(), 1);
-            assert_eq!(substs.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
-            assert_eq!(vm.lookup_interned(&1).unwrap(), "q");
+            assert_eq!(substs.get(&Term::Variable(0)).unwrap(), &Term::Atom(2));
+            assert_eq!(vm.lookup_variable(&0).unwrap(), "q");
             assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
         } else {
             assert!(false);
@@ -374,12 +374,12 @@ mod tests {
         assert!(vm.run(Rc::new(instr)).is_ok());
         if let Some(vm::Value::Table(table)) = vm.stack.last() {
             assert_eq!(table.len(), 2);
-            assert_eq!(table.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
-            assert_eq!(table.get(&Term::Variable(3)).unwrap(), &Term::Atom(4));
-            assert_eq!(vm.lookup_interned(&1).unwrap(), "x");
+            assert_eq!(table.get(&Term::Variable(0)).unwrap(), &Term::Atom(2));
+            assert_eq!(table.get(&Term::Variable(3)).unwrap(), &Term::Atom(5));
+            assert_eq!(vm.lookup_variable(&0).unwrap(), "x");
             assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
-            assert_eq!(vm.lookup_interned(&3).unwrap(), "y");
-            assert_eq!(vm.lookup_interned(&4).unwrap(), "oil");
+            assert_eq!(vm.lookup_variable(&3).unwrap(), "y");
+            assert_eq!(vm.lookup_interned(&5).unwrap(), "oil");
         } else {
             assert!(false);
         }
@@ -404,12 +404,12 @@ mod tests {
         }
         if let Some(vm::Value::Table(table)) = vm.stack.pop() {
             assert_eq!(table.len(), 2);
-            assert_eq!(table.get(&Term::Variable(1)).unwrap(), &Term::Atom(2));
-            assert_eq!(table.get(&Term::Variable(3)).unwrap(), &Term::Atom(4));
-            assert_eq!(vm.lookup_interned(&1).unwrap(), "x");
+            assert_eq!(table.get(&Term::Variable(0)).unwrap(), &Term::Atom(2));
+            assert_eq!(table.get(&Term::Variable(3)).unwrap(), &Term::Atom(5));
+            assert_eq!(vm.lookup_variable(&0).unwrap(), "x");
             assert_eq!(vm.lookup_interned(&2).unwrap(), "olive");
-            assert_eq!(vm.lookup_interned(&3).unwrap(), "y");
-            assert_eq!(vm.lookup_interned(&4).unwrap(), "oil");
+            assert_eq!(vm.lookup_variable(&3).unwrap(), "y");
+            assert_eq!(vm.lookup_interned(&5).unwrap(), "oil");
         } else {
             assert!(false);
         }
@@ -445,6 +445,62 @@ mod tests {
             assert!(*kind == vm::CallableKind::Relation);
             assert!(parameters.len() == 1);
             assert!(*ip == 0);
+        } else {
+            assert!(false);
+        }
+
+        let mut ctx = codegen::Context::new();
+        let mut vm = vm::VirtualMachine::new();
+        let mut instr = Vec::new();
+        generate!(
+            "next(solve(conj {
+                x == 'sarah,
+                disj {
+                    x == 'sarah |
+                    x == 'milcah |
+                    x == 'yiscah
+                }
+            }))
+            ",
+            &mut ctx,
+            &mut vm,
+            &mut instr
+        );
+        assert!(vm.run(Rc::new(instr)).is_ok());
+        assert_eq!(vm.stack.len(), 2);
+        if let Some(vm::Value::Table(table)) = vm.stack.pop() {
+            assert_eq!(table.len(), 1);
+            assert_eq!(table.get(&Term::Variable(0)).unwrap(), &Term::Atom(2));
+            assert_eq!(vm.lookup_variable(&0).unwrap(), "x");
+            assert_eq!(vm.lookup_interned(&2).unwrap(), "sarah");
+        } else {
+            assert!(false);
+        }
+
+        let mut ctx = codegen::Context::new();
+        let mut vm = vm::VirtualMachine::new();
+        let mut instr = Vec::new();
+        generate!(
+            "let female = rel(x) {
+                disj {
+                    x == 'sarah |
+                    x == 'milcah |
+                    x == 'yiscah
+                }
+            }
+            next(solve(female('sarah)))
+            ",
+            &mut ctx,
+            &mut vm,
+            &mut instr
+        );
+        assert!(vm.run(Rc::new(instr)).is_ok());
+        assert_eq!(vm.stack.len(), 2);
+        if let Some(vm::Value::Table(table)) = vm.stack.pop() {
+            assert_eq!(table.len(), 1);
+            assert_eq!(table.get(&Term::Variable(2)).unwrap(), &Term::Atom(4));
+            assert_eq!(vm.lookup_variable(&2).unwrap(), "x");
+            assert_eq!(vm.lookup_interned(&4).unwrap(), "sarah");
         } else {
             assert!(false);
         }

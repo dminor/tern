@@ -127,7 +127,8 @@ impl fmt::Display for Value {
 
 pub struct VirtualMachine {
     next_id: u64,
-    pub interned: HashMap<u64, String>,
+    pub interned: HashMap<String, u64>,
+    pub variables: HashMap<u64, u64>,
 
     pub stack: Vec<Value>,
     pub callstack: Vec<Value>,
@@ -173,13 +174,39 @@ macro_rules! buildgoal {
 
 impl VirtualMachine {
     pub fn intern(&mut self, s: &String) -> u64 {
-        self.next_id += 1;
-        self.interned.insert(self.next_id, s.to_string());
-        self.next_id
+        if let Some(id) = self.interned.get(s) {
+            *id
+        } else {
+            let id = self.next_id;
+            self.next_id += 1;
+            self.interned.insert(s.to_string(), id);
+            id
+        }
     }
 
-    pub fn lookup_interned(&mut self, id: &u64) -> Option<&String> {
-        self.interned.get(id)
+    pub fn lookup_interned(&self, id: &u64) -> Option<&String> {
+        for (key, value) in self.interned.iter() {
+            if id == value {
+                return Some(key);
+            }
+        }
+        None
+    }
+
+    pub fn new_variable(&mut self, variable: &String) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        let interned = self.intern(variable);
+        self.variables.insert(id, interned);
+        return id;
+    }
+
+    pub fn lookup_variable(&self, id: &u64) -> Option<&String> {
+        if let Some(interned) = self.variables.get(id) {
+            self.lookup_interned(interned)
+        } else {
+            None
+        }
     }
 
     pub fn run(&mut self, instr: Rc<Vec<Opcode>>) -> Result<(), RuntimeError> {
@@ -512,6 +539,7 @@ impl VirtualMachine {
         Self {
             next_id: 0,
             interned: HashMap::new(),
+            variables: HashMap::new(),
             stack: Vec::new(),
             callstack: Vec::new(),
             env: HashMap::new(),
@@ -658,6 +686,27 @@ mod tests {
         instr.push(vm::Opcode::Unify);
         instr.push(vm::Opcode::Variable(2));
         instr.push(vm::Opcode::Atom(2));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::Conj2);
+        instr.push(vm::Opcode::Solve);
+        instr.push(vm::Opcode::Next);
+        assert!(vm.run(Rc::new(instr)).is_ok());
+        if let Some(vm::Value::Table(substs)) = vm.stack.last() {
+            assert_eq!(
+                substs.get(&unification::Term::Variable(1)).unwrap(),
+                &unification::Term::Atom(1)
+            );
+        } else {
+            assert!(false);
+        }
+
+        let mut vm = vm::VirtualMachine::new();
+        let mut instr = Vec::new();
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(1));
+        instr.push(vm::Opcode::Unify);
+        instr.push(vm::Opcode::Variable(1));
+        instr.push(vm::Opcode::Atom(1));
         instr.push(vm::Opcode::Unify);
         instr.push(vm::Opcode::Conj2);
         instr.push(vm::Opcode::Solve);
