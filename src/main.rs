@@ -49,49 +49,54 @@ fn eval(filename: &str, src: &str, ctx: &mut codegen::Context, vm: &mut vm::Virt
                 let mut instr = Vec::new();
                 match codegen::generate(&ast, ctx, vm, &mut instr) {
                     Ok(()) => match vm.run(Rc::new(instr)) {
-                        Ok(()) => match vm.stack.pop() {
-                            Some(vm::Value::Table(substs)) => {
-                                if substs.is_empty() {
-                                    println!("Ok.");
-                                } else {
-                                    for subst in substs {
-                                        match subst.0 {
-                                            unification::Term::Atom(a)
-                                            | unification::Term::Variable(a) => {
-                                                if let Some(interned) = vm.lookup_interned(&a) {
-                                                    print!("{}: ", interned);
-                                                } else {
-                                                    print!("{}: ", a);
+                        Ok(()) => {
+                            match vm.stack.pop() {
+                                Some(vm::Value::Table(substs)) => {
+                                    if substs.is_empty() {
+                                        println!("Ok.");
+                                    } else {
+                                        for subst in substs {
+                                            match subst.0 {
+                                                unification::Term::Variable(a) => {
+                                                    if let Some(name) = vm.lookup_variable(&a) {
+                                                        print!("{}: ", name);
+                                                    } else {
+                                                        print!("{}: ", a);
+                                                    }
                                                 }
+                                                _ => unreachable!(
+                                                    "expected variable as substitution key"
+                                                ),
                                             }
-                                            _ => {
-                                                println!("{:?}", subst.1);
-                                            }
-                                        }
-                                        match subst.1 {
-                                            unification::Term::Atom(a)
-                                            | unification::Term::Variable(a) => {
+                                            match subst.1 {
+                                            unification::Term::Atom(a) => {
                                                 if let Some(interned) = vm.lookup_interned(&a) {
                                                     println!("{}", interned);
                                                 } else {
                                                     println!("{}", a);
                                                 }
+                                            },
+                                            unification::Term::Variable(a) => {
+                                                if let Some(name) = vm.lookup_variable(&a) {
+                                                    println!("{}", name);
+                                                } else {
+                                                    println!("{}", a);
+                                                }
                                             }
-                                            _ => {
-                                                println!("{:?}", subst.1);
-                                            }
+                                            _ => unreachable!("expected atom or variable as substitution value")
+                                        }
                                         }
                                     }
                                 }
+                                Some(vm::Value::None) => {
+                                    println!("No.");
+                                }
+                                Some(value) => {
+                                    println!("{}", value);
+                                }
+                                _ => {}
                             }
-                            Some(vm::Value::None) => {
-                                println!("No.");
-                            }
-                            Some(value) => {
-                                println!("{}", value);
-                            }
-                            _ => {}
-                        },
+                        }
                         Err(err) => {
                             println!("RuntimeError: {}", err.msg);
                             if vm.callstack.is_empty() {
