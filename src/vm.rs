@@ -462,15 +462,20 @@ impl VirtualMachine {
                                         let mut result = goal;
                                         for parameter in parameters.iter().rev() {
                                             match self.stack.pop() {
-                                                Some(Value::Term(term)) => {
-                                                    result = Rc::new(logic::Conj2::new(
-                                                        Rc::new(logic::Unify::new(
-                                                            unification::Term::Variable(*parameter),
-                                                            term,
-                                                        )),
-                                                        result,
-                                                    ));
-                                                }
+                                                Some(Value::Term(term)) => match term {
+                                                    unification::Term::Atom(_) => {
+                                                        result = Rc::new(logic::Conj2::new(
+                                                            Rc::new(logic::Unify::new(
+                                                                unification::Term::Variable(
+                                                                    *parameter,
+                                                                ),
+                                                                term,
+                                                            )),
+                                                            result,
+                                                        ));
+                                                    }
+                                                    _ => {}
+                                                },
                                                 Some(_) => {
                                                     // TODO: include type in message.
                                                     err!(self, "TypeError: Expected term as argument to relation.", ip);
