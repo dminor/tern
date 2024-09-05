@@ -17,10 +17,11 @@ Syntax
     statement  -> comment | letbinding | expression
     comment    -> "#" .* "\n"
     letbinding -> "let" variable "=" expression
-    expression -> table | relation | fncall | letref | goal | term
+    expression -> table | relation | fncall | bindingref | goal | term
     table      -> "{" (term ":" term "," )* "}"
-    relation   -> "rel" varlist "{" goal "}"
-    fncall     -> variable  "(" ((expression ",")* expression)? ")"
+    relation   -> "rel" relname varlist "{" goal "}"
+    fncall     -> variable "(" ((expression ",")* expression)? ")"
+    relcall    -> relname "(" ((term ",")* term)? ")"
     bindingref -> variable
     goal       -> disj | conj | var | equals
     disj       -> "disj" "{" (goal "|")* goal "}"
@@ -31,6 +32,7 @@ Syntax
     atom       -> "'"[A-Za-z0-9]+
     varlist    -> "(" (variable ",")* variable ")"
     variable   -> [a-z][A-Za-z0-9]*
+    relname    -> [A-Z][A-Za-z0-9]*
 
 Annotated Bibliography
 ----------------------

@@ -15,7 +15,7 @@ pub enum AST {
     Table(Vec<AST>),
     LetBinding(String, Box<AST>),
     BindingRef(String),
-    Relation(Vec<AST>, Box<AST>),
+    Relation(String, Vec<AST>, Box<AST>),
 }
 
 impl fmt::Display for AST {
@@ -103,8 +103,8 @@ impl fmt::Display for AST {
             AST::BindingRef(name) => {
                 write!(f, "{}", name)
             }
-            AST::Relation(parameters, body) => {
-                write!(f, "rel(")?;
+            AST::Relation(name, parameters, body) => {
+                write!(f, "rel {}(", name)?;
                 let mut first = true;
                 for parameter in parameters {
                     if !first {
@@ -314,6 +314,35 @@ fn relation(
             });
         }
         state.offset = token.offset;
+        let name;
+        if let Some(token) = tokens.next() {
+            state.offset = token.offset;
+            if let TokenKind::Literal(s) = &token.kind {
+                if let Some(ch) = s.chars().next() {
+                    if ch.is_uppercase() {
+                        name = s.to_string();
+                    } else {
+                        return Err(SyntaxError {
+                            msg: "Relation name must start with an uppercase character."
+                                .to_string(),
+                            offset: state.offset,
+                        });
+                    }
+                } else {
+                    unreachable!("relation name is empty string")
+                }
+            } else {
+                return Err(SyntaxError {
+                    msg: "Expected literal while parsing relation name.".to_string(),
+                    offset: state.offset,
+                });
+            }
+        } else {
+            return Err(SyntaxError {
+                msg: "Unexpected end of input while parsing `rel`.".to_string(),
+                offset: state.offset,
+            });
+        }
         let parameters = varlist(state, tokens)?;
         if let Some(token) = tokens.next() {
             if token.kind != TokenKind::LeftBrace {
@@ -342,7 +371,7 @@ fn relation(
                 offset: state.offset,
             });
         }
-        Ok(AST::Relation(parameters, Box::new(body)))
+        Ok(AST::Relation(name, parameters, Box::new(body)))
     } else {
         Err(SyntaxError {
             msg: "Unexpected end of input while parsing `rel`.".to_string(),
@@ -902,25 +931,30 @@ mod tests {
         parsefails!("let 'x = {}", "Expected literal while parsing variable.", 2);
         parsefails!("let {} = {}", "Expected literal while parsing variable.", 2);
         parse!("x", "x");
-        parse!("rel(x) { x == 'olive }", "rel(x) { x == 'olive }");
+        parse!("rel R(x) { x == 'olive }", "rel R(x) { x == 'olive }");
         parse!(
-            "let y = rel(x) { disj { x == 'red | x == 'bean } }",
-            "let y = rel(x) { disj { x == 'red | x == 'bean } }"
+            "let y = rel R(x) { disj { x == 'red | x == 'bean } }",
+            "let y = rel R(x) { disj { x == 'red | x == 'bean } }"
         );
         parsefails!(
-            "rel(x) { x == 'olive ",
+            "rel R(x) { x == 'olive ",
             "Unexpected end of input while parsing `rel`.",
-            19
+            21
         );
         parsefails!(
-            "rel(x) { }",
+            "rel R(x) { }",
             "Expected conj, disj, equals or var while parsing goal.",
-            5
+            7
         );
         parsefails!(
-            "rel() { 'olive == 'oil }",
+            "rel R() { 'olive == 'oil }",
             "Expected literal while parsing variable.",
-            2
+            4
+        );
+        parsefails!(
+            "rel r() { 'olive == 'oil }",
+            "Relation name must start with an uppercase character.",
+            4
         );
     }
 }

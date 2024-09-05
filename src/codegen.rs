@@ -165,7 +165,14 @@ pub fn generate(
             }
             instr.push(Opcode::GetEnv);
         }
-        AST::Relation(parameters, body) => {
+        AST::Relation(name, parameters, body) => {
+            if let Some(id) = ctx.lookup(name) {
+                instr.push(Opcode::Variable(id));
+            } else {
+                let id = vm.new_variable(name);
+                ctx.insert(id, name);
+                instr.push(Opcode::Variable(id));
+            }
             ctx.push();
             let mut params = vec![];
             for parameter in parameters {
@@ -187,7 +194,8 @@ pub fn generate(
                 parameters: Rc::new(params),
                 instructions: Rc::new(body_instr),
                 ip: 0,
-            })
+            });
+            instr.push(Opcode::SetEnv);
         }
     }
 
@@ -422,13 +430,14 @@ mod tests {
         let mut vm = vm::VirtualMachine::new();
         let mut instr = Vec::new();
         generate!(
-            "rel(x) {
+            "rel R(x) {
                 disj {
                     x == 'sarah |
                     x == 'milcah |
                     x == 'yiscah
                 }
-            }",
+            }
+            R",
             &mut ctx,
             &mut vm,
             &mut instr
@@ -481,14 +490,14 @@ mod tests {
         let mut vm = vm::VirtualMachine::new();
         let mut instr = Vec::new();
         generate!(
-            "let female = rel(x) {
+            "rel Female(x) {
                 disj {
                     x == 'sarah |
                     x == 'milcah |
                     x == 'yiscah
                 }
             }
-            next(solve(female('sarah)))
+            next(solve(Female('sarah)))
             ",
             &mut ctx,
             &mut vm,

@@ -1,7 +1,7 @@
 # This is the biblical family database example from Chapter 1
 # of The Art of Prolog.
 
-let male = rel(x) {
+rel Male(x) {
     disj {
         x == 'terach |
         x == 'abraham |
@@ -12,7 +12,7 @@ let male = rel(x) {
     }
 }
 
-let female = rel(x) {
+rel Female(x) {
     disj {
         x == 'sarah |
         x == 'milcah |
@@ -20,7 +20,7 @@ let female = rel(x) {
     }
 }
 
-let father = rel(x, y) {
+rel Father(x, y) {
     disj {
         conj {x == 'terach, y == 'abraham} |
         conj {x == 'terach, y == 'nachor} |
@@ -32,16 +32,16 @@ let father = rel(x, y) {
     }
 }
 
-let mother = rel(x, y) {
+rel Mother(x, y) {
     disj {
         conj {x == 'sarah, y == 'isaac}
     }
 }
 
 # TODO: We don't currently support binding references inside of a goal.
-# let son = rel(x, y) {
+# rel Son(x, y) {
 #     conj {
-#         father(y, x),
-#         male(x)
+#         Father(y, x),
+#         Male(x)
 #     }
 # }
